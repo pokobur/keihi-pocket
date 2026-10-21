@@ -158,7 +158,7 @@ export function BudgetAndCarryoverModal({
 
   // --- Tab 4: Add Category State ---
   const [newCatName, setNewCatName] = useState('');
-  const [newCatBudget, setNewCatBudget] = useState('5000');
+  const [newCatBudget, setNewCatBudget] = useState('0');
   const [newCatType, setNewCatType] = useState<'regular' | 'credit' | 'savings'>(
     'regular'
   );
@@ -194,8 +194,7 @@ export function BudgetAndCarryoverModal({
 
     for (const cat of settings.categories) {
       nextCarry[cat.id] = currentCycle.allocations[cat.id]?.carryover ?? 0;
-      nextCycleBase[cat.id] =
-        currentCycle.allocations[cat.id]?.base ?? cat.defaultBudget;
+      nextCycleBase[cat.id] = currentCycle.allocations[cat.id]?.base ?? 0;
       nextDefaultBudgets[cat.id] = cat.defaultBudget;
       nextCatNames[cat.id] = cat.name;
     }
@@ -332,9 +331,14 @@ export function BudgetAndCarryoverModal({
     const nextAllocations: CycleAllocations = {};
     for (const cat of settings.categories) {
       nextAllocations[cat.id] = {
-        base: cycleBaseInputs[cat.id] ?? cat.defaultBudget,
+        base: cycleBaseInputs[cat.id] ?? 0,
         carryover: currentCycle.allocations[cat.id]?.carryover ?? 0,
       };
+      // 科目名が変更されていたら反映
+      const editedName = categoryNames[cat.id]?.trim();
+      if (editedName && editedName !== cat.name) {
+        onUpdateCategory(cat.id, { name: editedName });
+      }
     }
     onUpdateCycleAllocations(
       currentCycle.cycleId,
@@ -343,7 +347,7 @@ export function BudgetAndCarryoverModal({
       cycleIncomeInput,
       cycleIncomeMemo
     );
-    setSavedNotice('当月の入金額・基本予算配分を更新しました');
+    setSavedNotice(`${titleLabel}の手動入金額と予算配分を保存しました`);
     setTimeout(() => setSavedNotice(null), 2500);
   };
 
@@ -378,7 +382,7 @@ export function BudgetAndCarryoverModal({
       iconKey: newCatIcon,
     });
     setNewCatName('');
-    setNewCatBudget('5000');
+    setNewCatBudget('0');
     setSavedNotice(`新しい科目「${added.name}」を追加しました`);
     setTimeout(() => setSavedNotice(null), 2500);
   };
@@ -397,7 +401,7 @@ export function BudgetAndCarryoverModal({
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-700 flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-teal-600" />
-              <span>予算設定・繰越振り分け・科目管理</span>
+              <span>手動入金・予算配分・繰越管理</span>
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               対象サイクル: {titleLabel} ({rangeLabel})
@@ -416,6 +420,19 @@ export function BudgetAndCarryoverModal({
         <div className="bg-stone-100/80 px-4 pt-2.5 border-b border-stone-200/80 flex gap-1.5 overflow-x-auto shrink-0">
           <button
             type="button"
+            onClick={() => setActiveTab('base')}
+            className={`px-3.5 py-2 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 border-b-2 transition whitespace-nowrap ${
+              activeTab === 'base'
+                ? 'bg-[#faf8f5] text-teal-800 border-teal-500 shadow-2xs'
+                : 'text-slate-500 border-transparent hover:text-slate-700 hover:bg-white/50'
+            }`}
+          >
+            <Coins className="w-3.5 h-3.5" />
+            <span>1. 入金・予算配分（手動）</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('carryover')}
             className={`px-3.5 py-2 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 border-b-2 transition whitespace-nowrap ${
               activeTab === 'carryover'
@@ -424,7 +441,7 @@ export function BudgetAndCarryoverModal({
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>1. 繰越金の振り分け</span>
+            <span>2. 繰越金の振り分け</span>
           </button>
 
           <button
@@ -437,20 +454,7 @@ export function BudgetAndCarryoverModal({
             }`}
           >
             <ArrowRightLeft className="w-3.5 h-3.5" />
-            <span>2. 期中の科目間振替</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('base')}
-            className={`px-3.5 py-2 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 border-b-2 transition whitespace-nowrap ${
-              activeTab === 'base'
-                ? 'bg-[#faf8f5] text-slate-800 border-slate-400 shadow-2xs'
-                : 'text-slate-500 border-transparent hover:text-slate-700 hover:bg-white/50'
-            }`}
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span>3. 基本予算設定</span>
+            <span>3. 期中の科目間振替</span>
           </button>
 
           <button
@@ -953,121 +957,33 @@ export function BudgetAndCarryoverModal({
                   </div>
                 )}
               </div>
-
-              {/* Section B: 当月の定額入金額調整・臨時収入追加 */}
-              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-stone-200/80 space-y-4">
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-slate-700 flex items-center gap-2">
-                    <Coins className="w-4 h-4 text-amber-500" />
-                    <span>
-                      当月入金額の調整・臨時収入の追加（{titleLabel}のみ）
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    毎月の定額入金（¥60,000）以外に、当月だけ臨時収入を追加したり各科目の当月基本枠を微調整できます。
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">
-                      当月入金額（定額 ¥60,000 ＋ 臨時収入等）
-                    </label>
-                    <input
-                      type="number"
-                      step={1000}
-                      value={cycleIncomeInput}
-                      onChange={(e) =>
-                        setCycleIncomeInput(
-                          parseInt(e.target.value || '0', 10) || 0
-                        )
-                      }
-                      className="w-full px-3 py-2 rounded-xl border border-stone-200 bg-[#faf8f5] text-base font-bold text-slate-700"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">
-                      入金調整メモ（任意）
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="例: 臨時キャッシュバック +5,000円"
-                      value={cycleIncomeMemo}
-                      onChange={(e) => setCycleIncomeMemo(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-stone-200 bg-[#faf8f5] text-sm text-slate-700"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-                  {settings.categories.map((cat) => (
-                    <div
-                      key={cat.id}
-                      className="bg-[#faf8f5] p-2.5 rounded-xl border border-stone-200/80"
-                    >
-                      <label className="block text-[11px] font-bold text-slate-500 mb-1 truncate">
-                        {cat.name} (当月基本)
-                      </label>
-                      <input
-                        type="number"
-                        step={500}
-                        value={cycleBaseInputs[cat.id] ?? 0}
-                        onChange={(e) =>
-                          setCycleBaseInputs((prev) => ({
-                            ...prev,
-                            [cat.id]:
-                              parseInt(e.target.value || '0', 10) || 0,
-                          }))
-                        }
-                        className="w-full px-2 py-1 rounded-lg border border-stone-200 bg-white text-xs font-bold text-slate-700"
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-                  <span
-                    className={`text-xs font-bold ${
-                      cycleBaseDiff === 0 ? 'text-teal-700' : 'text-amber-600'
-                    }`}
-                  >
-                    当月入金 {formatYen(cycleIncomeInput)} − 当月基本配分合計{' '}
-                    {formatYen(cycleBaseSum)} ＝ 差額 {formatYen(cycleBaseDiff)}
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={handleSaveCycleIncomeAndBase}
-                    className="px-4 py-2 rounded-xl bg-teal-600/90 hover:bg-teal-600 text-white text-xs font-bold transition"
-                  >
-                    当月の入金・基本枠を保存
-                  </button>
-                </div>
-              </div>
             </div>
           )}
 
           {/* ==========================================
-              TAB 3: 毎月の基本予算設定 (デフォルト上限値 & 科目名編集)
+              TAB 1 (base): 当月の手動入金 ＆ 各科目への予算配分
           ========================================== */}
           {activeTab === 'base' && (
             <div className="space-y-5">
-              <div className="bg-white rounded-2xl p-4 border border-stone-200/80 space-y-3">
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-stone-200/80 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-sm font-bold text-slate-700">
-                      毎月25日の定額入金額と各科目の基本予算（デフォルト上限値）
+                    <h3 className="text-sm sm:text-base font-bold text-slate-700 flex items-center gap-2">
+                      <Coins className="w-4 h-4 text-teal-600" />
+                      <span>
+                        {titleLabel} の手動入金 ＆ 各科目の予算配分
+                      </span>
                     </h3>
-                    <p className="text-xs text-slate-500">
-                      各科目の基本予算合計が定額入金額（¥60,000）と一致するよう設定できます（科目名もここで変更できます）。
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      毎月25日の自動入金は行われません。当月分の入金額を手動で入力し、各科目へ予算を配分してください。
                     </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  <div className="bg-[#faf8f5] p-3.5 rounded-xl border border-stone-200/80">
-                    <label className="block text-xs font-bold text-slate-600 mb-1">
-                      毎月25日の定額支給額（基本原資）
+                  <div className="bg-[#faf8f5] p-3.5 rounded-xl border border-stone-200/80 space-y-2">
+                    <label className="block text-xs font-bold text-slate-600">
+                      当月の入金額（原資・手動入力）
                     </label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
@@ -1075,30 +991,62 @@ export function BudgetAndCarryoverModal({
                       </span>
                       <input
                         type="number"
+                        min={0}
                         step={1000}
-                        value={baseIncomeSetting}
+                        value={cycleIncomeInput}
                         onChange={(e) =>
-                          setBaseIncomeSetting(
-                            Math.max(0, parseInt(e.target.value || '0', 10))
+                          setCycleIncomeInput(
+                            Math.max(0, parseInt(e.target.value || '0', 10) || 0)
                           )
                         }
-                        className="w-full pl-7 pr-3 py-1.5 rounded-xl border border-stone-200 bg-white font-bold text-base text-slate-700"
+                        className="w-full pl-7 pr-3 py-1.5 rounded-xl border border-stone-200 bg-white font-extrabold text-base text-slate-700"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[10000, 30000, 50000, 60000].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() =>
+                            setCycleIncomeInput((prev) => prev + v)
+                          }
+                          className="px-2 py-0.5 rounded-lg bg-white hover:bg-teal-50 text-slate-600 hover:text-teal-800 border border-stone-200 text-[11px] font-semibold transition"
+                        >
+                          +{v.toLocaleString()}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setCycleIncomeInput(0)}
+                        className="px-2 py-0.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-slate-500 text-[11px] font-semibold transition"
+                      >
+                        ¥0クリア
+                      </button>
+                    </div>
+                    <div className="pt-1">
+                      <input
+                        type="text"
+                        placeholder="入金メモ（任意 / 例: 10月度入金、臨時収入など）"
+                        value={cycleIncomeMemo}
+                        onChange={(e) => setCycleIncomeMemo(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs text-slate-700"
                       />
                     </div>
                   </div>
 
                   <div
                     className={`p-3.5 rounded-xl border flex flex-col justify-center ${
-                      defaultBudgetDiff === 0
+                      cycleBaseDiff === 0
                         ? 'bg-teal-50/80 border-teal-200/80 text-teal-900'
                         : 'bg-amber-50/80 border-amber-200/80 text-amber-900'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold">
-                        科目合計: {formatYen(defaultBudgetSum)} / 差額確認
+                        当月配分合計: {formatYen(cycleBaseSum)} / 当月入金:{' '}
+                        {formatYen(cycleIncomeInput)}
                       </span>
-                      {defaultBudgetDiff === 0 ? (
+                      {cycleBaseDiff === 0 ? (
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-600/90 text-white">
                           <CheckCircle2 className="w-3 h-3" />
                           一致
@@ -1106,26 +1054,28 @@ export function BudgetAndCarryoverModal({
                       ) : (
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-400 text-amber-950">
                           <AlertTriangle className="w-3 h-3" />
-                          {defaultBudgetDiff > 0 ? '未配分あり' : '配分超過'}
+                          {cycleBaseDiff > 0 ? '未配分あり' : '配分超過'}
                         </span>
                       )}
                     </div>
                     <div className="text-lg font-extrabold mt-1">
-                      {defaultBudgetDiff === 0
-                        ? `差額 ¥0（${formatYen(baseIncomeSetting)}に一致）`
-                        : defaultBudgetDiff > 0
-                        ? `あと ${formatYen(defaultBudgetDiff)} 配分できます`
-                        : `${formatYen(Math.abs(defaultBudgetDiff))} 超過しています`}
+                      {cycleBaseDiff === 0
+                        ? `未配分 ¥0（入金額 ${formatYen(cycleIncomeInput)} に一致）`
+                        : cycleBaseDiff > 0
+                        ? `あと ${formatYen(cycleBaseDiff)} を各科目へ配分できます`
+                        : `入金額より ${formatYen(Math.abs(cycleBaseDiff))} 超過しています`}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Categories Base Budget & Name Inputs */}
+              {/* Categories Manual Base Budget & Name Inputs */}
               <div className="space-y-2.5">
                 {settings.categories.map((cat) => {
                   const meta = getCategoryStyle(cat);
-                  const val = defaultBudgets[cat.id] ?? 0;
+                  const val = cycleBaseInputs[cat.id] ?? 0;
+                  const carryVal =
+                    currentCycle.allocations[cat.id]?.carryover ?? 0;
                   const nameVal = categoryNames[cat.id] ?? cat.name;
                   return (
                     <div
@@ -1152,27 +1102,32 @@ export function BudgetAndCarryoverModal({
                                 [cat.id]: e.target.value,
                               }))
                             }
-                            className="w-full sm:w-56 px-2.5 py-1 rounded-lg border border-stone-200 bg-[#faf8f5] focus:bg-white text-sm font-bold text-slate-700"
+                            className="w-full sm:w-52 px-2.5 py-1 rounded-lg border border-stone-200 bg-[#faf8f5] focus:bg-white text-sm font-bold text-slate-700"
                             placeholder="科目名"
                           />
-                          <div className="text-[11px] text-slate-400 mt-0.5">
-                            {meta.description}
+                          <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
+                            <span>{meta.description}</span>
+                            {carryVal > 0 && (
+                              <span className="text-teal-700 font-semibold">
+                                (+繰越 {formatYen(carryVal)})
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <div className="relative w-36">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative w-32">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
                             ¥
                           </span>
                           <input
                             type="number"
                             min={0}
-                            step={1000}
+                            step={500}
                             value={val}
                             onChange={(e) =>
-                              setDefaultBudgets((prev) => ({
+                              setCycleBaseInputs((prev) => ({
                                 ...prev,
                                 [cat.id]: Math.max(
                                   0,
@@ -1180,8 +1135,52 @@ export function BudgetAndCarryoverModal({
                                 ),
                               }))
                             }
-                            className="w-full pl-7 pr-3 py-1.5 rounded-xl border border-stone-200 bg-[#faf8f5] focus:bg-white text-sm font-bold text-right text-slate-700"
+                            className="w-full pl-7 pr-2.5 py-1.5 rounded-xl border border-stone-200 bg-[#faf8f5] focus:bg-white text-sm font-bold text-right text-slate-700"
                           />
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          {[1000, 5000, 10000].map((stepVal) => (
+                            <button
+                              key={stepVal}
+                              type="button"
+                              onClick={() =>
+                                setCycleBaseInputs((prev) => ({
+                                  ...prev,
+                                  [cat.id]: (prev[cat.id] || 0) + stepVal,
+                                }))
+                              }
+                              className="px-2 py-1 rounded-lg bg-[#faf8f5] hover:bg-teal-50 text-slate-600 hover:text-teal-800 border border-stone-200 text-[11px] font-semibold transition"
+                            >
+                              +{(stepVal / 1000).toFixed(0)}k
+                            </button>
+                          ))}
+                          {cycleBaseDiff > 0 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setCycleBaseInputs((prev) => ({
+                                  ...prev,
+                                  [cat.id]: (prev[cat.id] || 0) + cycleBaseDiff,
+                                }))
+                              }
+                              className="px-2 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-[11px] font-bold transition"
+                            >
+                              残り全額 ({formatYen(cycleBaseDiff)})
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCycleBaseInputs((prev) => ({
+                                ...prev,
+                                [cat.id]: 0,
+                              }))
+                            }
+                            className="px-2 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-slate-500 text-[11px] font-semibold transition"
+                          >
+                            0
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1189,19 +1188,7 @@ export function BudgetAndCarryoverModal({
                 })}
               </div>
 
-              <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-slate-600 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={applyBaseToCurrent}
-                  onChange={(e) => setApplyBaseToCurrent(e.target.checked)}
-                  className="w-4 h-4 rounded text-teal-600 focus:ring-teal-400"
-                />
-                <span>
-                  現在表示中のサイクル（{titleLabel}）の基本予算枠にも今すぐ反映する
-                </span>
-              </label>
-
-              <div className="pt-2 flex items-center justify-end gap-3 border-t border-stone-200/80">
+              <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-stone-200/80">
                 <button
                   type="button"
                   onClick={() => setActiveTab('categories')}
@@ -1209,13 +1196,22 @@ export function BudgetAndCarryoverModal({
                 >
                   科目の追加・削除はこちら →
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSaveDefaultBudgets}
-                  className="px-6 py-2.5 rounded-xl bg-teal-600/90 hover:bg-teal-600 text-white text-xs sm:text-sm font-bold shadow-2xs transition"
-                >
-                  基本予算設定を保存する
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-4 py-2 rounded-xl border border-stone-200 bg-white text-slate-600 text-xs sm:text-sm font-semibold hover:bg-stone-50"
+                  >
+                    閉じる
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveCycleIncomeAndBase}
+                    className="px-6 py-2.5 rounded-xl bg-teal-600/90 hover:bg-teal-600 text-white text-xs sm:text-sm font-bold shadow-2xs transition"
+                  >
+                    当月の入金と予算配分を保存する
+                  </button>
+                </div>
               </div>
             </div>
           )}

@@ -22,10 +22,10 @@ import {
   pruneExpiredCyclesAndTransactions,
 } from '@/lib/calculations';
 
-const STORAGE_KEY = 'keihi_pocket_data_v2';
+const STORAGE_KEY = 'keihi_pocket_data_v3';
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  baseMonthlyIncome: 60000,
+  baseMonthlyIncome: 0,
   cycleStartDay: 25,
   creditCardClosingDay: 10,
   retentionMonths: MAX_RETENTION_MONTHS,
@@ -34,7 +34,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     {
       id: 'food',
       name: '食材費',
-      defaultBudget: 20000,
+      defaultBudget: 0,
       isCredit: false,
       isSavings: false,
       colorKey: 'peach',
@@ -43,7 +43,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     {
       id: 'consumables',
       name: '消耗品費',
-      defaultBudget: 10000,
+      defaultBudget: 0,
       isCredit: false,
       isSavings: false,
       colorKey: 'mint',
@@ -52,7 +52,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     {
       id: 'net_payment',
       name: 'ネット決済費',
-      defaultBudget: 15000,
+      defaultBudget: 0,
       isCredit: true,
       isSavings: false,
       colorKey: 'lavender',
@@ -61,7 +61,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     {
       id: 'books',
       name: '図書費',
-      defaultBudget: 5000,
+      defaultBudget: 0,
       isCredit: false,
       isSavings: false,
       colorKey: 'sky',
@@ -70,7 +70,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     {
       id: 'savings',
       name: '貯金',
-      defaultBudget: 10000,
+      defaultBudget: 0,
       isCredit: false,
       isSavings: true,
       colorKey: 'honey',
@@ -86,14 +86,14 @@ export const INITIAL_SAMPLE_DATA: KeihiPocketData = {
       cycleId: '2026-10',
       startDate: '2026-10-25',
       endDate: '2026-11-24',
-      income: 60000,
+      income: 0,
       carryoverTotal: 0,
       allocations: {
-        food: { base: 20000, carryover: 0 },
-        consumables: { base: 10000, carryover: 0 },
-        net_payment: { base: 15000, carryover: 0 },
-        books: { base: 5000, carryover: 0 },
-        savings: { base: 10000, carryover: 0 },
+        food: { base: 0, carryover: 0 },
+        consumables: { base: 0, carryover: 0 },
+        net_payment: { base: 0, carryover: 0 },
+        books: { base: 0, carryover: 0 },
+        savings: { base: 0, carryover: 0 },
       },
       isClosed: false,
     },
@@ -118,8 +118,9 @@ function createCycleObject(
   const defaultAllocations: CycleAllocations = {};
 
   for (const cat of settings.categories) {
+    // 毎月25日に自動入金は行わず、当月基本枠(base)は0円で開始し、前月繰越のみ引き継ぐ
     defaultAllocations[cat.id] = {
-      base: cat.defaultBudget,
+      base: 0,
       carryover: prevInfo.hasPrevCycle
         ? prevInfo.categoryRemainders[cat.id] || 0
         : 0,
@@ -130,7 +131,7 @@ function createCycleObject(
     cycleId,
     startDate,
     endDate,
-    income: settings.baseMonthlyIncome,
+    income: 0,
     carryoverTotal: prevInfo.hasPrevCycle
       ? prevInfo.calculatedCarryoverTotal
       : 0,
@@ -218,10 +219,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       let saved = localStorage.getItem(STORAGE_KEY);
+      let isMigratingFromOlderVersion = false;
       if (!saved) {
+        const oldV2 = localStorage.getItem('keihi_pocket_data_v2');
         const oldV1 = localStorage.getItem('keihi_pocket_data_v1');
-        if (oldV1) {
-          saved = oldV1;
+        if (oldV2 || oldV1) {
+          saved = oldV2 || oldV1;
+          isMigratingFromOlderVersion = true;
         }
       }
 
@@ -233,21 +237,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             (t) => !t.id.startsWith('tx_prev_') && !t.id.startsWith('tx_00')
           );
 
-          // 仮データの繰越金が残っている場合はクリーンな状態にリセット
-          parsed.monthlyCycles = parsed.monthlyCycles.map((c) => {
-            if (c.carryoverTotal === 4500) {
+          // 旧バージョンからの移行時は、基本支給額・デフォルト予算を0円にリセット（手動入金仕様へ統一）
+          if (isMigratingFromOlderVersion) {
+            parsed.settings.baseMonthlyIncome = 0;
+            parsed.settings.categories = (parsed.settings.categories || []).map(
+              (cat) => ({
+                ...cat,
+                defaultBudget: 0,
+              })
+            );
+            parsed.monthlyCycles = parsed.monthlyCycles.map((c) => {
               const cleanedAllocations: CycleAllocations = {};
               for (const [catId, alloc] of Object.entries(c.allocations)) {
-                cleanedAllocations[catId] = { ...alloc, carryover: 0 };
+                cleanedAllocations[catId] = {
+                  base: c.income === 60000 && !c.incomeMemo ? 0 : alloc.base,
+                  carryover: c.carryoverTotal === 4500 ? 0 : alloc.carryover,
+                };
               }
               return {
                 ...c,
-                carryoverTotal: 0,
+                income: c.income === 60000 && !c.incomeMemo ? 0 : c.income,
+                carryoverTotal: c.carryoverTotal === 4500 ? 0 : c.carryoverTotal,
                 allocations: cleanedAllocations,
               };
-            }
-            return c;
-          });
+            });
+          }
 
           const { prunedData, removedCycleIds } =
             pruneExpiredCyclesAndTransactions(parsed);
@@ -641,7 +655,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           cycleId,
           startDate,
           endDate,
-          income: income ?? prev.settings.baseMonthlyIncome,
+          income: income ?? 0,
           incomeMemo,
           carryoverTotal,
           allocations,
@@ -776,12 +790,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const clearAllTransactions = () => {
     const cleanAllocations: CycleAllocations = {};
     for (const cat of data.settings.categories) {
-      cleanAllocations[cat.id] = { base: cat.defaultBudget, carryover: 0 };
+      cleanAllocations[cat.id] = { base: 0, carryover: 0 };
     }
     const cleanCycle: MonthlyCycle = {
       cycleId: activeCycleId,
       ...getCycleDateRange(activeCycleId),
-      income: data.settings.baseMonthlyIncome,
+      income: 0,
       carryoverTotal: 0,
       allocations: cleanAllocations,
       isClosed: false,

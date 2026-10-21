@@ -199,7 +199,7 @@ export function calculateCycleSummary(
 
   const categorySummaries: CategorySummary[] = settings.categories.map((cat) => {
     const alloc = cycle.allocations[cat.id] || {
-      base: cat.defaultBudget,
+      base: 0,
       carryover: 0,
     };
     const baseBudget = alloc.base;

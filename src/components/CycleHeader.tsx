@@ -88,6 +88,15 @@ export function CycleHeader({
         <div className="flex items-center flex-wrap gap-2">
           <button
             type="button"
+            onClick={() => onOpenBudgetModal('base')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-teal-600/90 hover:bg-teal-600 text-white shadow-2xs transition"
+          >
+            <PlusCircle className="w-3.5 h-3.5" />
+            <span>入金・予算配分</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => onOpenBudgetModal('carryover')}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-teal-50 hover:bg-teal-100/80 text-teal-800 border border-teal-200/80 transition"
           >
@@ -116,16 +125,6 @@ export function CycleHeader({
           >
             <FolderPlus className="w-3.5 h-3.5 text-orange-500" />
             <span>科目の編集・追加</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onOpenBudgetModal('base')}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-stone-100/80 hover:bg-stone-200/70 text-slate-700 border border-stone-200/80 transition"
-          >
-            <Settings className="w-3.5 h-3.5 text-slate-500" />
-            <span className="hidden md:inline">基本予算設定</span>
-            <span className="md:hidden">予算</span>
           </button>
 
           <button
@@ -234,10 +233,10 @@ export function CycleHeader({
 
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-teal-50/70 border border-teal-200/60 text-teal-800 text-xs font-medium">
               <CalendarClock className="w-3.5 h-3.5 text-teal-500" />
-              <span>次回入金(25日)まで</span>
+              <span>サイクル切替(25日)まで</span>
               <span className="font-bold text-teal-700 text-sm">
                 {countdowns.daysUntilPayday25 === 0
-                  ? '本日入金日'
+                  ? '本日サイクル開始日'
                   : `あと${countdowns.daysUntilPayday25}日`}
               </span>
               <span className="text-[10px] text-teal-500">
@@ -331,17 +330,17 @@ export function CycleHeader({
                   </span>
                   <button
                     type="button"
-                    onClick={() => onOpenBudgetModal('carryover')}
-                    className="text-[11px] font-semibold text-teal-700 hover:underline"
+                    onClick={() => onOpenBudgetModal('base')}
+                    className="text-[11px] font-bold text-teal-700 hover:underline flex items-center gap-0.5"
                   >
-                    内訳・繰越設定 →
+                    ＋ 手動入金・配分 →
                   </button>
                 </div>
                 <div className="mt-1.5 text-2xl font-extrabold text-slate-700">
                   {formatYen(cycle.income + cycle.carryoverTotal)}
                 </div>
                 <div className="mt-1 inline-flex items-center flex-wrap gap-1 text-xs font-medium text-slate-600 bg-white px-2.5 py-1 rounded-xl border border-stone-200/70">
-                  <span>定額 {formatYen(cycle.income)}</span>
+                  <span>当月入金 {formatYen(cycle.income)}</span>
                   <span className="text-slate-400">+</span>
                   <span className="text-teal-700 font-bold">
                     繰越 {formatYen(cycle.carryoverTotal)}
