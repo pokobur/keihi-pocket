@@ -37,6 +37,7 @@ const INITIAL_SAMPLE_DATA: KeihiPocketData = {
       income: 0,
       carryoverTotal: 0,
       allocations: {},
+      isClosed: false,
     },
   ],
   transactions: [],
@@ -71,6 +72,7 @@ const oldData: KeihiPocketData = {
         food: { base: 25000, carryover: 2000 },
         consumables: { base: 10000, carryover: 1000 },
       },
+      isClosed: true,
     },
   ],
   transactions: [
