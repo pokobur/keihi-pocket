@@ -119,11 +119,11 @@ export function BudgetAndCarryoverModal({
     transactions
   );
 
-  const [carryoverPool, setCarryoverPool] = useState<number>(
-    currentCycle.carryoverTotal
+  const [carryoverPool, setCarryoverPool] = useState<string>(
+    currentCycle.carryoverTotal === 0 ? '' : String(currentCycle.carryoverTotal)
   );
   const [carryoverInputs, setCarryoverInputs] = useState<
-    Record<CategoryId, number>
+    Record<CategoryId, string>
   >({});
 
   // --- Tab 2: In-Cycle Transfer & Income Adjustment State ---
@@ -138,8 +138,8 @@ export function BudgetAndCarryoverModal({
   );
   const [transferAmount, setTransferAmount] = useState<string>('1000');
   const [transferMemo, setTransferMemo] = useState<string>('');
-  const [cycleIncomeInput, setCycleIncomeInput] = useState<number>(
-    currentCycle.income
+  const [cycleIncomeInput, setCycleIncomeInput] = useState<string>(
+    currentCycle.income === 0 ? '' : String(currentCycle.income)
   );
   const [cycleIncomeMemo, setCycleIncomeMemo] = useState<string>(
     currentCycle.incomeMemo || ''
@@ -151,15 +151,15 @@ export function BudgetAndCarryoverModal({
     currentCycle.endDate
   );
   const [cycleBaseInputs, setCycleBaseInputs] = useState<
-    Record<CategoryId, number>
+    Record<CategoryId, string>
   >({});
 
   // --- Tab 3: Default Base Budget Settings State ---
-  const [baseIncomeSetting, setBaseIncomeSetting] = useState<number>(
-    settings.baseMonthlyIncome
+  const [baseIncomeSetting, setBaseIncomeSetting] = useState<string>(
+    settings.baseMonthlyIncome === 0 ? '' : String(settings.baseMonthlyIncome)
   );
   const [defaultBudgets, setDefaultBudgets] = useState<
-    Record<CategoryId, number>
+    Record<CategoryId, string>
   >({});
   const [categoryNames, setCategoryNames] = useState<
     Record<CategoryId, string>
@@ -168,7 +168,7 @@ export function BudgetAndCarryoverModal({
 
   // --- Tab 4: Add Category State ---
   const [newCatName, setNewCatName] = useState('');
-  const [newCatBudget, setNewCatBudget] = useState('0');
+  const [newCatBudget, setNewCatBudget] = useState('');
   const [newCatType, setNewCatType] = useState<'regular' | 'credit' | 'savings'>(
     'regular'
   );
@@ -196,16 +196,23 @@ export function BudgetAndCarryoverModal({
   }, [initialTransferFromCategory, toCat, settings.categories]);
 
   useEffect(() => {
-    setCarryoverPool(currentCycle.carryoverTotal);
-    const nextCarry: Record<CategoryId, number> = {};
-    const nextCycleBase: Record<CategoryId, number> = {};
-    const nextDefaultBudgets: Record<CategoryId, number> = {};
+    setCarryoverPool(
+      currentCycle.carryoverTotal === 0
+        ? ''
+        : String(currentCycle.carryoverTotal)
+    );
+    const nextCarry: Record<CategoryId, string> = {};
+    const nextCycleBase: Record<CategoryId, string> = {};
+    const nextDefaultBudgets: Record<CategoryId, string> = {};
     const nextCatNames: Record<CategoryId, string> = {};
 
     for (const cat of settings.categories) {
-      nextCarry[cat.id] = currentCycle.allocations[cat.id]?.carryover ?? 0;
-      nextCycleBase[cat.id] = currentCycle.allocations[cat.id]?.base ?? 0;
-      nextDefaultBudgets[cat.id] = cat.defaultBudget;
+      const cVal = currentCycle.allocations[cat.id]?.carryover ?? 0;
+      const bVal = currentCycle.allocations[cat.id]?.base ?? 0;
+      nextCarry[cat.id] = cVal === 0 ? '' : String(cVal);
+      nextCycleBase[cat.id] = bVal === 0 ? '' : String(bVal);
+      nextDefaultBudgets[cat.id] =
+        cat.defaultBudget === 0 ? '' : String(cat.defaultBudget);
       nextCatNames[cat.id] = cat.name;
     }
 
@@ -213,11 +220,17 @@ export function BudgetAndCarryoverModal({
     setCycleBaseInputs(nextCycleBase);
     setDefaultBudgets(nextDefaultBudgets);
     setCategoryNames(nextCatNames);
-    setCycleIncomeInput(currentCycle.income);
+    setCycleIncomeInput(
+      currentCycle.income === 0 ? '' : String(currentCycle.income)
+    );
     setCycleIncomeMemo(currentCycle.incomeMemo || '');
     setCycleStartDateInput(currentCycle.startDate);
     setCycleEndDateInput(currentCycle.endDate);
-    setBaseIncomeSetting(settings.baseMonthlyIncome);
+    setBaseIncomeSetting(
+      settings.baseMonthlyIncome === 0
+        ? ''
+        : String(settings.baseMonthlyIncome)
+    );
   }, [currentCycle, settings, isOpen]);
 
   if (!isOpen) return null;
@@ -234,43 +247,47 @@ export function BudgetAndCarryoverModal({
   );
 
   // Calculations for Tab 1 (Carryover)
+  const carryoverPoolNum = parseInt(carryoverPool || '0', 10) || 0;
   const allocatedCarryoverSum = settings.categories.reduce(
-    (sum, cat) => sum + (Number(carryoverInputs[cat.id]) || 0),
+    (sum, cat) => sum + (parseInt(carryoverInputs[cat.id] || '0', 10) || 0),
     0
   );
-  const unallocatedPool = carryoverPool - allocatedCarryoverSum;
+  const unallocatedPool = carryoverPoolNum - allocatedCarryoverSum;
 
   // Shortcut 1: 余った科目にそのまま据え置き（科目別自動繰越）
   const handleKeepInRemainingCategories = () => {
     if (prevCarryoverInfo.hasPrevCycle) {
       const targetPool = prevCarryoverInfo.calculatedCarryoverTotal;
-      setCarryoverPool(targetPool);
-      const next: Record<CategoryId, number> = {};
+      setCarryoverPool(targetPool === 0 ? '' : String(targetPool));
+      const next: Record<CategoryId, string> = {};
       for (const cat of settings.categories) {
-        next[cat.id] = prevCarryoverInfo.categoryRemainders[cat.id] || 0;
+        const val = prevCarryoverInfo.categoryRemainders[cat.id] || 0;
+        next[cat.id] = val === 0 ? '' : String(val);
       }
       setCarryoverInputs(next);
     } else {
+      const poolNum = parseInt(carryoverPool || '0', 10) || 0;
       const nonSavings = settings.categories.filter((c) => !c.isSavings);
       const nonSavingsBaseTotal = nonSavings.reduce(
-        (s, c) => s + (cycleBaseInputs[c.id] || 0),
+        (s, c) => s + (parseInt(cycleBaseInputs[c.id] || '0', 10) || 0),
         0
       );
-      const next: Record<CategoryId, number> = {};
+      const next: Record<CategoryId, string> = {};
       for (const cat of settings.categories) {
-        next[cat.id] = 0;
+        next[cat.id] = '';
       }
       if (nonSavingsBaseTotal > 0 && nonSavings.length > 0) {
         let running = 0;
         nonSavings.forEach((cat, idx) => {
           if (idx === nonSavings.length - 1) {
-            next[cat.id] = carryoverPool - running;
+            const finalVal = poolNum - running;
+            next[cat.id] = finalVal === 0 ? '' : String(finalVal);
           } else {
+            const baseVal = parseInt(cycleBaseInputs[cat.id] || '0', 10) || 0;
             const share = Math.round(
-              (carryoverPool * (cycleBaseInputs[cat.id] || 0)) /
-                nonSavingsBaseTotal
+              (poolNum * baseVal) / nonSavingsBaseTotal
             );
-            next[cat.id] = share;
+            next[cat.id] = share === 0 ? '' : String(share);
             running += share;
           }
         });
@@ -284,18 +301,19 @@ export function BudgetAndCarryoverModal({
     const savingsCat =
       settings.categories.find((c) => c.isSavings) ||
       settings.categories[settings.categories.length - 1];
-    const next: Record<CategoryId, number> = {};
+    const poolNum = parseInt(carryoverPool || '0', 10) || 0;
+    const next: Record<CategoryId, string> = {};
     for (const cat of settings.categories) {
-      next[cat.id] = cat.id === savingsCat?.id ? carryoverPool : 0;
+      next[cat.id] = cat.id === savingsCat?.id ? (poolNum === 0 ? '' : String(poolNum)) : '';
     }
     setCarryoverInputs(next);
   };
 
   // Shortcut 3: すべてリセット（0円）
   const handleResetCarryoverInputs = () => {
-    const next: Record<CategoryId, number> = {};
+    const next: Record<CategoryId, string> = {};
     for (const cat of settings.categories) {
-      next[cat.id] = 0;
+      next[cat.id] = '';
     }
     setCarryoverInputs(next);
   };
@@ -306,12 +324,12 @@ export function BudgetAndCarryoverModal({
     for (const cat of settings.categories) {
       nextAllocations[cat.id] = {
         base: currentCycle.allocations[cat.id]?.base ?? cat.defaultBudget,
-        carryover: carryoverInputs[cat.id] ?? 0,
+        carryover: parseInt(carryoverInputs[cat.id] || '0', 10) || 0,
       };
     }
     onUpdateCycleAllocations(
       currentCycle.cycleId,
-      carryoverPool,
+      parseInt(carryoverPool || '0', 10) || 0,
       nextAllocations
     );
     setSavedNotice('繰越金の振り分けを保存しました');
@@ -321,7 +339,7 @@ export function BudgetAndCarryoverModal({
   // Execute Tab 2 Transfer
   const handleExecuteTransfer = (e: React.FormEvent) => {
     e.preventDefault();
-    const amt = parseInt(transferAmount, 10);
+    const amt = parseInt(transferAmount || '0', 10);
     if (!amt || amt <= 0 || fromCat === toCat) return;
     onTransferBudget(
       currentCycle.cycleId,
@@ -347,7 +365,7 @@ export function BudgetAndCarryoverModal({
     const nextAllocations: CycleAllocations = {};
     for (const cat of settings.categories) {
       nextAllocations[cat.id] = {
-        base: cycleBaseInputs[cat.id] ?? 0,
+        base: parseInt(cycleBaseInputs[cat.id] || '0', 10) || 0,
         carryover: currentCycle.allocations[cat.id]?.carryover ?? 0,
       };
       // 科目名が変更されていたら反映
@@ -360,7 +378,7 @@ export function BudgetAndCarryoverModal({
       currentCycle.cycleId,
       currentCycle.carryoverTotal,
       nextAllocations,
-      cycleIncomeInput,
+      parseInt(cycleIncomeInput || '0', 10) || 0,
       cycleIncomeMemo,
       {
         startDate: cycleStartDateInput,
@@ -374,16 +392,22 @@ export function BudgetAndCarryoverModal({
   };
 
   // Calculations for Tab 3 (Default Base Budgets)
+  const baseIncomeSettingNum = parseInt(baseIncomeSetting || '0', 10) || 0;
   const defaultBudgetSum = settings.categories.reduce(
-    (sum, cat) => sum + (Number(defaultBudgets[cat.id]) || 0),
+    (sum, cat) => sum + (parseInt(defaultBudgets[cat.id] || '0', 10) || 0),
     0
   );
-  const defaultBudgetDiff = baseIncomeSetting - defaultBudgetSum;
+  const defaultBudgetDiff = baseIncomeSettingNum - defaultBudgetSum;
 
   const handleSaveDefaultBudgets = () => {
+    const parsedDefaultBudgets: Record<CategoryId, number> = {};
+    for (const cat of settings.categories) {
+      parsedDefaultBudgets[cat.id] =
+        parseInt(defaultBudgets[cat.id] || '0', 10) || 0;
+    }
     onUpdateBaseBudgets(
-      defaultBudgets,
-      baseIncomeSetting,
+      parsedDefaultBudgets,
+      baseIncomeSettingNum,
       applyBaseToCurrent,
       categoryNames
     );
@@ -404,16 +428,17 @@ export function BudgetAndCarryoverModal({
       iconKey: newCatIcon,
     });
     setNewCatName('');
-    setNewCatBudget('0');
+    setNewCatBudget('');
     setSavedNotice(`新しい科目「${added.name}」を追加しました`);
     setTimeout(() => setSavedNotice(null), 2500);
   };
 
+  const cycleIncomeInputNum = parseInt(cycleIncomeInput || '0', 10) || 0;
   const cycleBaseSum = settings.categories.reduce(
-    (sum, cat) => sum + (Number(cycleBaseInputs[cat.id]) || 0),
+    (sum, cat) => sum + (parseInt(cycleBaseInputs[cat.id] || '0', 10) || 0),
     0
   );
-  const cycleBaseDiff = cycleIncomeInput - cycleBaseSum;
+  const cycleBaseDiff = cycleIncomeInputNum - cycleBaseSum;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
@@ -518,13 +543,17 @@ export function BudgetAndCarryoverModal({
                     </span>
                   </div>
                   {prevCarryoverInfo.hasPrevCycle &&
-                    carryoverPool !==
+                    carryoverPoolNum !==
                       prevCarryoverInfo.calculatedCarryoverTotal && (
                       <button
                         type="button"
                         onClick={() =>
                           setCarryoverPool(
-                            prevCarryoverInfo.calculatedCarryoverTotal
+                            prevCarryoverInfo.calculatedCarryoverTotal === 0
+                              ? ''
+                              : String(
+                                  prevCarryoverInfo.calculatedCarryoverTotal
+                                )
                           )
                         }
                         className="text-xs font-bold text-teal-700 hover:underline"
@@ -592,10 +621,12 @@ export function BudgetAndCarryoverModal({
                         type="number"
                         min={0}
                         step={100}
+                        placeholder="0"
                         value={carryoverPool}
+                        onFocus={(e) => e.target.select()}
                         onChange={(e) =>
                           setCarryoverPool(
-                            Math.max(0, parseInt(e.target.value || '0', 10))
+                            e.target.value.replace(/^0+(?=\d)/, '')
                           )
                         }
                         className="w-full pl-7 pr-3 py-1.5 rounded-xl border border-stone-200 bg-white font-extrabold text-base text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-300"
@@ -676,8 +707,9 @@ export function BudgetAndCarryoverModal({
                   const meta = getCategoryStyle(cat);
                   const baseVal =
                     currentCycle.allocations[cat.id]?.base ?? cat.defaultBudget;
-                  const carryVal = carryoverInputs[cat.id] ?? 0;
-                  const effectiveTotal = baseVal + carryVal;
+                  const carryVal = carryoverInputs[cat.id] ?? '';
+                  const carryValNum = parseInt(carryVal || '0', 10) || 0;
+                  const effectiveTotal = baseVal + carryValNum;
                   const prevRemainder =
                     prevCarryoverInfo.categoryRemainders[cat.id] ?? 0;
 
@@ -727,10 +759,11 @@ export function BudgetAndCarryoverModal({
                           <input
                             type="number"
                             step={100}
+                            placeholder="0"
                             value={carryVal}
+                            onFocus={(e) => e.target.select()}
                             onChange={(e) => {
-                              const val =
-                                parseInt(e.target.value || '0', 10) || 0;
+                              const val = e.target.value.replace(/^0+(?=\d)/, '');
                               setCarryoverInputs((prev) => ({
                                 ...prev,
                                 [cat.id]: val,
@@ -744,10 +777,14 @@ export function BudgetAndCarryoverModal({
                           <button
                             type="button"
                             onClick={() =>
-                              setCarryoverInputs((prev) => ({
-                                ...prev,
-                                [cat.id]: (prev[cat.id] || 0) + 500,
-                              }))
+                              setCarryoverInputs((prev) => {
+                                const cur = parseInt(prev[cat.id] || '0', 10) || 0;
+                                const nextVal = cur + 500;
+                                return {
+                                  ...prev,
+                                  [cat.id]: nextVal === 0 ? '' : String(nextVal),
+                                };
+                              })
                             }
                             className="px-2 py-1 rounded-lg bg-[#faf8f5] hover:bg-stone-100 border border-stone-200/80 text-slate-600 text-xs font-semibold"
                           >
@@ -756,10 +793,14 @@ export function BudgetAndCarryoverModal({
                           <button
                             type="button"
                             onClick={() =>
-                              setCarryoverInputs((prev) => ({
-                                ...prev,
-                                [cat.id]: (prev[cat.id] || 0) + 1000,
-                              }))
+                              setCarryoverInputs((prev) => {
+                                const cur = parseInt(prev[cat.id] || '0', 10) || 0;
+                                const nextVal = cur + 1000;
+                                return {
+                                  ...prev,
+                                  [cat.id]: nextVal === 0 ? '' : String(nextVal),
+                                };
+                              })
                             }
                             className="px-2 py-1 rounded-lg bg-[#faf8f5] hover:bg-stone-100 border border-stone-200/80 text-slate-600 text-xs font-semibold"
                           >
@@ -769,13 +810,14 @@ export function BudgetAndCarryoverModal({
                             <button
                               type="button"
                               onClick={() =>
-                                setCarryoverInputs((prev) => ({
-                                  ...prev,
-                                  [cat.id]: Math.max(
-                                    0,
-                                    (prev[cat.id] || 0) + unallocatedPool
-                                  ),
-                                }))
+                                setCarryoverInputs((prev) => {
+                                  const cur = parseInt(prev[cat.id] || '0', 10) || 0;
+                                  const nextVal = Math.max(0, cur + unallocatedPool);
+                                  return {
+                                    ...prev,
+                                    [cat.id]: nextVal === 0 ? '' : String(nextVal),
+                                  };
+                                })
                               }
                               className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200/80 text-xs font-bold"
                             >
@@ -896,8 +938,14 @@ export function BudgetAndCarryoverModal({
                         type="number"
                         min={100}
                         step={100}
+                        placeholder="0"
                         value={transferAmount}
-                        onChange={(e) => setTransferAmount(e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) =>
+                          setTransferAmount(
+                            e.target.value.replace(/^0+(?=\d)/, '')
+                          )
+                        }
                         className="w-full px-3 py-2 rounded-xl border border-stone-200 bg-white text-sm font-bold text-slate-700"
                       />
                       <div className="mt-1 flex gap-1">
@@ -1072,10 +1120,12 @@ export function BudgetAndCarryoverModal({
                         type="number"
                         min={0}
                         step={1000}
+                        placeholder="0"
                         value={cycleIncomeInput}
+                        onFocus={(e) => e.target.select()}
                         onChange={(e) =>
                           setCycleIncomeInput(
-                            Math.max(0, parseInt(e.target.value || '0', 10) || 0)
+                            e.target.value.replace(/^0+(?=\d)/, '')
                           )
                         }
                         className="w-full pl-7 pr-3 py-1.5 rounded-xl border border-stone-200 bg-white font-extrabold text-base text-slate-700"
@@ -1087,7 +1137,11 @@ export function BudgetAndCarryoverModal({
                           key={v}
                           type="button"
                           onClick={() =>
-                            setCycleIncomeInput((prev) => prev + v)
+                            setCycleIncomeInput((prev) => {
+                              const cur = parseInt(prev || '0', 10) || 0;
+                              const nextVal = cur + v;
+                              return nextVal === 0 ? '' : String(nextVal);
+                            })
                           }
                           className="px-2 py-0.5 rounded-lg bg-white hover:bg-teal-50 text-slate-600 hover:text-teal-800 border border-stone-200 text-[11px] font-semibold transition"
                         >
@@ -1096,7 +1150,7 @@ export function BudgetAndCarryoverModal({
                       ))}
                       <button
                         type="button"
-                        onClick={() => setCycleIncomeInput(0)}
+                        onClick={() => setCycleIncomeInput('')}
                         className="px-2 py-0.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-slate-500 text-[11px] font-semibold transition"
                       >
                         ¥0クリア
@@ -1123,7 +1177,7 @@ export function BudgetAndCarryoverModal({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold">
                         当月配分合計: {formatYen(cycleBaseSum)} / 当月入金:{' '}
-                        {formatYen(cycleIncomeInput)}
+                        {formatYen(cycleIncomeInputNum)}
                       </span>
                       {cycleBaseDiff === 0 ? (
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-600/90 text-white">
@@ -1139,7 +1193,7 @@ export function BudgetAndCarryoverModal({
                     </div>
                     <div className="text-lg font-extrabold mt-1">
                       {cycleBaseDiff === 0
-                        ? `未配分 ¥0（入金額 ${formatYen(cycleIncomeInput)} に一致）`
+                        ? `未配分 ¥0（入金額 ${formatYen(cycleIncomeInputNum)} に一致）`
                         : cycleBaseDiff > 0
                         ? `あと ${formatYen(cycleBaseDiff)} を各科目へ配分できます`
                         : `入金額より ${formatYen(Math.abs(cycleBaseDiff))} 超過しています`}
@@ -1152,7 +1206,7 @@ export function BudgetAndCarryoverModal({
               <div className="space-y-2.5">
                 {settings.categories.map((cat) => {
                   const meta = getCategoryStyle(cat);
-                  const val = cycleBaseInputs[cat.id] ?? 0;
+                  const val = cycleBaseInputs[cat.id] ?? '';
                   const carryVal =
                     currentCycle.allocations[cat.id]?.carryover ?? 0;
                   const nameVal = categoryNames[cat.id] ?? cat.name;
@@ -1204,16 +1258,16 @@ export function BudgetAndCarryoverModal({
                             type="number"
                             min={0}
                             step={500}
+                            placeholder="0"
                             value={val}
-                            onChange={(e) =>
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/^0+(?=\d)/, '');
                               setCycleBaseInputs((prev) => ({
                                 ...prev,
-                                [cat.id]: Math.max(
-                                  0,
-                                  parseInt(e.target.value || '0', 10) || 0
-                                ),
-                              }))
-                            }
+                                [cat.id]: v,
+                              }));
+                            }}
                             className="w-full pl-7 pr-2.5 py-1.5 rounded-xl border border-stone-200 bg-[#faf8f5] focus:bg-white text-sm font-bold text-right text-slate-700"
                           />
                         </div>
@@ -1224,10 +1278,16 @@ export function BudgetAndCarryoverModal({
                               key={stepVal}
                               type="button"
                               onClick={() =>
-                                setCycleBaseInputs((prev) => ({
-                                  ...prev,
-                                  [cat.id]: (prev[cat.id] || 0) + stepVal,
-                                }))
+                                setCycleBaseInputs((prev) => {
+                                  const cur =
+                                    parseInt(prev[cat.id] || '0', 10) || 0;
+                                  const nextVal = cur + stepVal;
+                                  return {
+                                    ...prev,
+                                    [cat.id]:
+                                      nextVal === 0 ? '' : String(nextVal),
+                                  };
+                                })
                               }
                               className="px-2 py-1 rounded-lg bg-[#faf8f5] hover:bg-teal-50 text-slate-600 hover:text-teal-800 border border-stone-200 text-[11px] font-semibold transition"
                             >
@@ -1238,10 +1298,16 @@ export function BudgetAndCarryoverModal({
                             <button
                               type="button"
                               onClick={() =>
-                                setCycleBaseInputs((prev) => ({
-                                  ...prev,
-                                  [cat.id]: (prev[cat.id] || 0) + cycleBaseDiff,
-                                }))
+                                setCycleBaseInputs((prev) => {
+                                  const cur =
+                                    parseInt(prev[cat.id] || '0', 10) || 0;
+                                  const nextVal = cur + cycleBaseDiff;
+                                  return {
+                                    ...prev,
+                                    [cat.id]:
+                                      nextVal === 0 ? '' : String(nextVal),
+                                  };
+                                })
                               }
                               className="px-2 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-[11px] font-bold transition"
                             >
@@ -1253,7 +1319,7 @@ export function BudgetAndCarryoverModal({
                             onClick={() =>
                               setCycleBaseInputs((prev) => ({
                                 ...prev,
-                                [cat.id]: 0,
+                                [cat.id]: '',
                               }))
                             }
                             className="px-2 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-slate-500 text-[11px] font-semibold transition"
@@ -1338,8 +1404,12 @@ export function BudgetAndCarryoverModal({
                       type="number"
                       min={0}
                       step={1000}
+                      placeholder="0"
                       value={newCatBudget}
-                      onChange={(e) => setNewCatBudget(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) =>
+                        setNewCatBudget(e.target.value.replace(/^0+(?=\d)/, ''))
+                      }
                       className="w-full px-3 py-2 rounded-xl border border-stone-200 bg-[#faf8f5] focus:bg-white text-sm font-bold text-slate-700"
                     />
                   </div>

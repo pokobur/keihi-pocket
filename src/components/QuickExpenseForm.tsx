@@ -426,7 +426,10 @@ export function QuickExpenseForm({
                 step={1}
                 placeholder={txType === 'income' ? '例: 10000' : '例: 3200'}
                 value={amountStr}
-                onChange={(e) => setAmountStr(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) =>
+                  setAmountStr(e.target.value.replace(/^0+(?=\d)/, ''))
+                }
                 required
                 className="w-full pl-8 pr-4 py-2 rounded-xl border border-stone-200 bg-[#faf8f5] focus:bg-white text-base font-extrabold text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-300"
               />

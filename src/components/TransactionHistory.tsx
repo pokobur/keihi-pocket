@@ -174,7 +174,7 @@ export function TransactionHistory({
     setEditDate(tx.date);
     setEditCategory(tx.categoryId);
     setEditSavingsType(tx.savingsType || 'withdrawal');
-    setEditAmount(String(tx.amount));
+    setEditAmount(tx.amount === 0 ? '' : String(tx.amount));
     setEditMemo(tx.memo);
   };
 
@@ -493,8 +493,12 @@ export function TransactionHistory({
                       <input
                         type="number"
                         min={1}
+                        placeholder="0"
                         value={editAmount}
-                        onChange={(e) => setEditAmount(e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) =>
+                          setEditAmount(e.target.value.replace(/^0+(?=\d)/, ''))
+                        }
                         className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white text-xs sm:text-sm font-bold text-slate-700"
                       />
                     </div>
