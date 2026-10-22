@@ -43,6 +43,7 @@ interface TransactionHistoryProps {
     id: string,
     updates: {
       date?: string;
+      type?: 'expense' | 'income';
       categoryId?: CategoryId;
       amount?: number;
       memo?: string;
@@ -182,12 +183,17 @@ export function TransactionHistory({
     const amt = parseInt(editAmount, 10);
     if (!editDate || !amt || amt <= 0) return;
     const catObj = categories.find((c) => c.id === editCategory);
+    const targetTx = allTransactions.find((t) => t.id === id);
     onUpdateTransaction(id, {
       date: editDate,
+      type: targetTx?.type || 'expense',
       categoryId: editCategory,
       amount: amt,
       memo: editMemo.trim(),
-      savingsType: catObj?.isSavings ? editSavingsType : undefined,
+      savingsType:
+        targetTx?.type !== 'income' && catObj?.isSavings
+          ? editSavingsType
+          : undefined,
     });
     setEditingId(null);
   };
@@ -417,13 +423,24 @@ export function TransactionHistory({
             const isFromPrevCycle = tx.cycleId !== currentCycle.cycleId;
 
             if (isEditing) {
+              const isEditingIncome = tx.type === 'income';
               return (
                 <div
                   key={tx.id}
-                  className="p-4 bg-teal-50/40 border-l-4 border-l-teal-400 space-y-3"
+                  className={`p-4 border-l-4 space-y-3 ${
+                    isEditingIncome
+                      ? 'bg-emerald-50/50 border-l-emerald-500'
+                      : 'bg-teal-50/40 border-l-teal-400'
+                  }`}
                 >
-                  <div className="text-xs font-bold text-teal-800">
-                    明細を編集中
+                  <div
+                    className={`text-xs font-bold ${
+                      isEditingIncome ? 'text-emerald-800' : 'text-teal-800'
+                    }`}
+                  >
+                    {isEditingIncome
+                      ? '💰 入金明細を編集中（保存時に科目の予算枠へ自動反映）'
+                      : '明細を編集中'}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
                     <div className="sm:col-span-3">
@@ -447,7 +464,7 @@ export function TransactionHistory({
                         ))}
                       </select>
                     </div>
-                    {editCatObj?.isSavings && (
+                    {!isEditingIncome && editCatObj?.isSavings && (
                       <div className="sm:col-span-2">
                         <select
                           value={editSavingsType}
@@ -465,7 +482,7 @@ export function TransactionHistory({
                     )}
                     <div
                       className={
-                        editCatObj?.isSavings
+                        !isEditingIncome && editCatObj?.isSavings
                           ? 'sm:col-span-2'
                           : 'sm:col-span-3'
                       }
@@ -480,7 +497,7 @@ export function TransactionHistory({
                     </div>
                     <div
                       className={
-                        editCatObj?.isSavings
+                        !isEditingIncome && editCatObj?.isSavings
                           ? 'sm:col-span-2'
                           : 'sm:col-span-3'
                       }
