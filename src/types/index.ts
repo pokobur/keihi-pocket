@@ -79,6 +79,7 @@ export interface Transaction {
   id: string;
   cycleId: string;
   date: string; // YYYY-MM-DD
+  type?: 'expense' | 'income'; // 'expense' (通常支出) | 'income' (経費入金・追加入金)
   categoryId: CategoryId;
   amount: number;
   memo: string;

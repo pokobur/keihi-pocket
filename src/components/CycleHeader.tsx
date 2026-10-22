@@ -42,6 +42,7 @@ interface CycleHeaderProps {
   ) => void;
   onOpenDataModal: () => void;
   onOpenQuickExpenseModal: () => void;
+  onOpenQuickIncomeModal?: () => void;
 }
 
 export function CycleHeader({
@@ -59,6 +60,7 @@ export function CycleHeader({
   onOpenBudgetModal,
   onOpenDataModal,
   onOpenQuickExpenseModal,
+  onOpenQuickIncomeModal,
 }: CycleHeaderProps) {
   const { titleLabel, rangeLabel } = getCycleDateRange(cycle.cycleId);
   const countdowns = calculateCountdowns();
@@ -86,13 +88,24 @@ export function CycleHeader({
 
         {/* Action Buttons */}
         <div className="flex items-center flex-wrap gap-2">
+          {onOpenQuickIncomeModal && (
+            <button
+              type="button"
+              onClick={onOpenQuickIncomeModal}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600/90 hover:bg-emerald-600 text-white shadow-2xs transition"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>＋ 経費を追加入金</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => onOpenBudgetModal('base')}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-teal-600/90 hover:bg-teal-600 text-white shadow-2xs transition"
           >
             <PlusCircle className="w-3.5 h-3.5" />
-            <span>入金・予算配分</span>
+            <span>一括予算配分</span>
           </button>
 
           <button
@@ -273,14 +286,26 @@ export function CycleHeader({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={onOpenQuickExpenseModal}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600/90 hover:bg-teal-600 text-white font-bold text-xs shadow-2xs transition shrink-0"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>支出を記録</span>
-              </button>
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                {onOpenQuickIncomeModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenQuickIncomeModal}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/90 hover:bg-emerald-600 text-white font-bold text-xs shadow-2xs transition"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    <span>追加入金</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onOpenQuickExpenseModal}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600/90 hover:bg-teal-600 text-white font-bold text-xs shadow-2xs transition"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>支出を記録</span>
+                </button>
+              </div>
             </div>
 
             {/* Progress Bar */}

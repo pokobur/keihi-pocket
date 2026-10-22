@@ -11,6 +11,7 @@ import {
   X,
   Filter,
   Calendar,
+  Wallet,
 } from 'lucide-react';
 import {
   CategoryConfig,
@@ -24,6 +25,7 @@ import { CategoryIcon, getCategoryStyle } from '@/components/CategoryIcon';
 
 export type TransactionFilterType =
   | 'all'
+  | 'income_only'
   | CategoryId
   | 'net_closing_confirmed'
   | 'net_closing_unconfirmed';
@@ -89,6 +91,7 @@ export function TransactionHistory({
     if (selectedFilter === 'net_closing_confirmed') {
       list = allTransactions.filter(
         (t) =>
+          t.type !== 'income' &&
           creditIds.has(t.categoryId) &&
           t.date >= netBilling.currentClosingPeriodStart &&
           t.date <= netBilling.currentClosingPeriodEnd
@@ -96,10 +99,18 @@ export function TransactionHistory({
     } else if (selectedFilter === 'net_closing_unconfirmed') {
       list = allTransactions.filter(
         (t) =>
+          t.type !== 'income' &&
           creditIds.has(t.categoryId) &&
           t.date >= netBilling.nextClosingPeriodStart &&
           t.date <= netBilling.nextClosingPeriodEnd
       );
+    } else if (selectedFilter === 'income_only') {
+      list =
+        scope === 'cycle'
+          ? allTransactions.filter(
+              (t) => t.cycleId === currentCycle.cycleId && t.type === 'income'
+            )
+          : allTransactions.filter((t) => t.type === 'income');
     } else if (selectedFilter === 'all') {
       list =
         scope === 'cycle'
@@ -141,8 +152,17 @@ export function TransactionHistory({
     scope,
   ]);
 
-  const filteredTotalAmount = useMemo(() => {
-    return filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
+  const { filteredIncomeTotal, filteredExpenseTotal } = useMemo(() => {
+    let inc = 0;
+    let exp = 0;
+    for (const t of filteredTransactions) {
+      if (t.type === 'income') {
+        inc += t.amount;
+      } else {
+        exp += t.amount;
+      }
+    }
+    return { filteredIncomeTotal: inc, filteredExpenseTotal: exp };
   }, [filteredTransactions]);
 
   const startEdit = (tx: Transaction) => {
@@ -224,13 +244,20 @@ export function TransactionHistory({
               </button>
             </div>
 
-            <div className="flex items-center gap-2 bg-[#faf8f5] px-3.5 py-1.5 rounded-xl border border-stone-200/80">
+            <div className="flex flex-wrap items-center gap-2 bg-[#faf8f5] px-3.5 py-1.5 rounded-xl border border-stone-200/80">
               <span className="text-xs font-semibold text-slate-500">
-                表示 {filteredTransactions.length} 件 /
+                表示 {filteredTransactions.length} 件
               </span>
-              <span className="text-sm sm:text-base font-extrabold text-slate-700">
-                {formatYen(filteredTotalAmount)}
-              </span>
+              {filteredIncomeTotal > 0 && (
+                <span className="text-xs sm:text-sm font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200/80">
+                  入金 +{formatYen(filteredIncomeTotal)}
+                </span>
+              )}
+              {(filteredExpenseTotal > 0 || filteredIncomeTotal === 0) && (
+                <span className="text-xs sm:text-sm font-extrabold text-slate-700">
+                  支出 {formatYen(filteredExpenseTotal)}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -253,6 +280,23 @@ export function TransactionHistory({
               }`}
             >
               すべて
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                onSelectFilter(
+                  selectedFilter === 'income_only' ? 'all' : 'income_only'
+                )
+              }
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
+                selectedFilter === 'income_only'
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                  : 'bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 border-emerald-200/80'
+              }`}
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span>入金履歴</span>
             </button>
 
             {categories.map((cat) => {
@@ -473,9 +517,13 @@ export function TransactionHistory({
             }
 
             const isNew = newlyAddedTxId === tx.id;
-            const isSavingsDeposit = cat?.isSavings && tx.savingsType === 'deposit';
-            const isSavingsWithdrawal = cat?.isSavings && tx.savingsType !== 'deposit';
-            const isCredit = cat?.isCredit || tx.categoryId === 'net_payment';
+            const isIncome = tx.type === 'income';
+            const isSavingsDeposit =
+              !isIncome && cat?.isSavings && tx.savingsType === 'deposit';
+            const isSavingsWithdrawal =
+              !isIncome && cat?.isSavings && tx.savingsType !== 'deposit';
+            const isCredit =
+              !isIncome && (cat?.isCredit || tx.categoryId === 'net_payment');
 
             return (
               <div
@@ -484,6 +532,8 @@ export function TransactionHistory({
                 className={`p-3.5 sm:px-5 transition-all duration-500 flex items-center justify-between gap-3 ${
                   isNew
                     ? 'bg-teal-50/90 ring-2 ring-teal-400/80 shadow-md rounded-xl'
+                    : isIncome
+                    ? 'bg-emerald-50/25 hover:bg-emerald-50/50'
                     : 'hover:bg-[#faf8f5]'
                 }`}
               >
@@ -513,7 +563,12 @@ export function TransactionHistory({
                       </span>
 
                       {/* 経費フローバッジ */}
-                      {isSavingsDeposit ? (
+                      {isIncome ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                          <Wallet className="w-2.5 h-2.5" />
+                          入金 ＋
+                        </span>
+                      ) : isSavingsDeposit ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
                           積立 ＋
                         </span>
@@ -532,7 +587,7 @@ export function TransactionHistory({
                         </span>
                       )}
 
-                      {tx.billingMonth && (
+                      {tx.billingMonth && !isIncome && (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50/70 text-indigo-600 border border-indigo-200/60">
                           {tx.billingMonth.slice(5).replace('-', '/')}締対象
                         </span>
@@ -557,7 +612,10 @@ export function TransactionHistory({
                     </div>
 
                     <p className="text-sm font-semibold text-slate-800 truncate mt-1">
-                      {tx.memo || `${cat?.name || '科目'}の支出`}
+                      {tx.memo ||
+                        (isIncome
+                          ? `${cat?.name || '科目'}への追加入金`
+                          : `${cat?.name || '科目'}の支出`)}
                     </p>
                   </div>
                 </div>
@@ -566,19 +624,23 @@ export function TransactionHistory({
                   <div className="text-right">
                     <span
                       className={`text-base sm:text-lg font-black tracking-tight ${
-                        isSavingsDeposit
+                        isIncome
+                          ? 'text-emerald-600'
+                          : isSavingsDeposit
                           ? 'text-teal-600'
                           : isCredit
                           ? 'text-indigo-900'
                           : 'text-slate-700'
                       }`}
                     >
-                      {isSavingsDeposit
+                      {isIncome || isSavingsDeposit
                         ? `+${formatYen(tx.amount)}`
                         : `-${formatYen(tx.amount)}`}
                     </span>
                     <div className="text-[10px] font-semibold text-slate-400">
-                      {isSavingsDeposit
+                      {isIncome
+                        ? '予算枠へ追加'
+                        : isSavingsDeposit
                         ? '貯金枠へ振替'
                         : isCredit
                         ? '次回口座引落'

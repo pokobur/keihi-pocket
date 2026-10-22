@@ -9,6 +9,8 @@ import {
   Tag,
   Check,
   X,
+  Coins,
+  ArrowDownCircle,
 } from 'lucide-react';
 import { CategoryConfig, CategoryId, MonthlyCycle } from '@/types';
 import {
@@ -23,8 +25,10 @@ interface QuickExpenseFormProps {
   categories: CategoryConfig[];
   currentCycle: MonthlyCycle;
   selectedCategoryId?: CategoryId;
+  initialTxType?: 'expense' | 'income';
   onAddTransaction: (input: {
     date: string;
+    type?: 'expense' | 'income';
     categoryId: CategoryId;
     amount: number;
     memo: string;
@@ -42,10 +46,18 @@ const DEFAULT_MEMO_SUGGESTIONS: Record<string, string[]> = {
   savings: ['予備費からの補填取崩', '臨時出費の取崩', 'ボーナス・臨時積立', '余剰金の追加貯金'],
 };
 
+const INCOME_MEMO_SUGGESTIONS: string[] = [
+  '月の途中の追加入金',
+  '当月分の経費入金',
+  '臨時経費の追加補充',
+  '予算不足分の追加補填',
+];
+
 export function QuickExpenseForm({
   categories,
   currentCycle,
   selectedCategoryId,
+  initialTxType = 'expense',
   onAddTransaction,
   isModal = false,
   onCloseModal,
@@ -59,6 +71,7 @@ export function QuickExpenseForm({
     return currentCycle.startDate;
   };
 
+  const [txType, setTxType] = useState<'expense' | 'income'>(initialTxType);
   const [date, setDate] = useState<string>(getInitialDate);
   const [categoryId, setCategoryId] = useState<CategoryId>(
     selectedCategoryId || categories[0]?.id || 'food'
@@ -69,6 +82,10 @@ export function QuickExpenseForm({
   const [amountStr, setAmountStr] = useState<string>('');
   const [memo, setMemo] = useState<string>('');
   const [justSaved, setJustSaved] = useState(false);
+
+  useEffect(() => {
+    setTxType(initialTxType);
+  }, [initialTxType]);
 
   useEffect(() => {
     if (
@@ -100,15 +117,18 @@ export function QuickExpenseForm({
 
   const targetCycleId = getCycleIdFromDate(date);
   const isDifferentCycle = targetCycleId !== currentCycle.cycleId;
-  const billingMonth = isCreditCat ? getBillingMonthForDate(date) : null;
+  const billingMonth =
+    txType === 'expense' && isCreditCat ? getBillingMonthForDate(date) : null;
 
   const suggestions =
-    DEFAULT_MEMO_SUGGESTIONS[categoryId] ||
-    (isCreditCat
-      ? DEFAULT_MEMO_SUGGESTIONS.net_payment
-      : isSavingsCat
-      ? DEFAULT_MEMO_SUGGESTIONS.savings
-      : ['日用品・買い物', '店舗決済', '雑費']);
+    txType === 'income'
+      ? INCOME_MEMO_SUGGESTIONS
+      : DEFAULT_MEMO_SUGGESTIONS[categoryId] ||
+        (isCreditCat
+          ? DEFAULT_MEMO_SUGGESTIONS.net_payment
+          : isSavingsCat
+          ? DEFAULT_MEMO_SUGGESTIONS.savings
+          : ['日用品・買い物', '店舗決済', '雑費']);
 
   const handleQuickAmountAdd = (addVal: number) => {
     const current = parseInt(amountStr || '0', 10) || 0;
@@ -122,10 +142,12 @@ export function QuickExpenseForm({
 
     onAddTransaction({
       date,
+      type: txType,
       categoryId,
       amount: numericAmount,
       memo: memo.trim(),
-      savingsType: isSavingsCat ? savingsType : undefined,
+      savingsType:
+        txType === 'expense' && isSavingsCat ? savingsType : undefined,
     });
 
     setAmountStr('');
@@ -138,18 +160,35 @@ export function QuickExpenseForm({
     }
   };
 
+  const quickAmounts =
+    txType === 'income'
+      ? [1000, 3000, 5000, 10000, 20000]
+      : [100, 500, 1000, 3000, 5000];
+
   return (
     <div
       className={`bg-white/95 rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden ${
         isModal ? 'w-full max-w-lg mx-auto shadow-xl border-stone-300/80' : ''
       }`}
     >
-      {/* Header - Soft Pastel Mint */}
-      <div className="bg-gradient-to-r from-teal-50/90 to-emerald-50/70 border-b border-teal-200/60 px-5 py-3.5 flex items-center justify-between">
+      {/* Header - Soft Pastel Mint / Emerald */}
+      <div
+        className={`border-b px-5 py-3.5 flex items-center justify-between transition-colors ${
+          txType === 'income'
+            ? 'bg-gradient-to-r from-emerald-50/95 to-teal-50/80 border-emerald-200/70'
+            : 'bg-gradient-to-r from-teal-50/90 to-emerald-50/70 border-teal-200/60'
+        }`}
+      >
         <div className="flex items-center gap-2">
-          <PlusCircle className="w-5 h-5 text-teal-600" />
+          {txType === 'income' ? (
+            <Coins className="w-5 h-5 text-emerald-600" />
+          ) : (
+            <PlusCircle className="w-5 h-5 text-teal-600" />
+          )}
           <h2 className="font-bold text-sm sm:text-base text-slate-700">
-            支出クイック登録
+            {txType === 'income'
+              ? '経費の入金・追加補充（クイック入金）'
+              : '支出・入金のクイック登録'}
           </h2>
         </div>
 
@@ -165,15 +204,54 @@ export function QuickExpenseForm({
       </div>
 
       <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4">
+        {/* Mode Switcher: 支出を記録 vs 経費を入金（追加） */}
+        <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-[#f5f2ec] border border-stone-200/80">
+          <button
+            type="button"
+            onClick={() => setTxType('expense')}
+            className={`py-2 px-3 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition ${
+              txType === 'expense'
+                ? 'bg-white text-slate-800 shadow-2xs border border-stone-200/70'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <PlusCircle className="w-4 h-4 text-teal-600" />
+            <span>支出を記録</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTxType('income')}
+            className={`py-2 px-3 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition ${
+              txType === 'income'
+                ? 'bg-emerald-600 text-white shadow-2xs'
+                : 'text-emerald-700 hover:bg-emerald-50/70'
+            }`}
+          >
+            <ArrowDownCircle className="w-4 h-4" />
+            <span>経費を入金（追加）</span>
+          </button>
+        </div>
+
+        {txType === 'income' && (
+          <div className="px-3.5 py-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200/70 text-xs text-emerald-900 font-medium leading-relaxed">
+            月の途中の追加入金や月初の入金を記録します。選択した科目の予算枠と当月総予算に自動加算され、<strong>収支履歴にも入金履歴として反映</strong>されます。
+          </div>
+        )}
+
         {/* Category Selector Pills */}
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-2">
-            1. 科目を選択
+            {txType === 'income'
+              ? '1. 入金先の科目を選択（予算を追加する科目）'
+              : '1. 科目を選択'}
           </label>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {categories.map((cat) => {
               const active = categoryId === cat.id;
               const meta = getCategoryStyle(cat);
+              const currentAlloc =
+                (currentCycle.allocations[cat.id]?.base || 0) +
+                (currentCycle.allocations[cat.id]?.carryover || 0);
               return (
                 <button
                   key={cat.id}
@@ -181,7 +259,9 @@ export function QuickExpenseForm({
                   onClick={() => setCategoryId(cat.id)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition text-left ${
                     active
-                      ? 'bg-teal-50/90 text-teal-900 border-teal-300 shadow-2xs ring-2 ring-teal-200/70'
+                      ? txType === 'income'
+                        ? 'bg-emerald-50/90 text-emerald-950 border-emerald-400 shadow-2xs ring-2 ring-emerald-200/70'
+                        : 'bg-teal-50/90 text-teal-900 border-teal-300 shadow-2xs ring-2 ring-teal-200/70'
                       : 'bg-[#faf8f5] hover:bg-stone-100/80 text-slate-600 border-stone-200/80'
                   }`}
                 >
@@ -194,15 +274,22 @@ export function QuickExpenseForm({
                       className="w-3.5 h-3.5"
                     />
                   </span>
-                  <span className="truncate">{cat.name}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate">{cat.name}</div>
+                    {txType === 'income' && (
+                      <div className="text-[10px] font-medium text-slate-400 truncate">
+                        枠: {formatYen(currentAlloc)}
+                      </div>
+                    )}
+                  </div>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Special Option when Savings is selected: 取り崩し vs 直接積立 */}
-        {isSavingsCat && (
+        {/* Special Option when Savings is selected (Expense mode only): 取り崩し vs 直接積立 */}
+        {txType === 'expense' && isSavingsCat && (
           <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/70 space-y-2">
             <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
               <PiggyBank className="w-4 h-4 text-amber-500" />
@@ -296,7 +383,9 @@ export function QuickExpenseForm({
           <div className="sm:col-span-7">
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                <span>3. 金額（円）</span>
+                <span>
+                  {txType === 'income' ? '3. 入金額（円）' : '3. 金額（円）'}
+                </span>
                 <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
                   必須
                 </span>
@@ -319,7 +408,7 @@ export function QuickExpenseForm({
                 type="number"
                 min={1}
                 step={1}
-                placeholder="例: 3200"
+                placeholder={txType === 'income' ? '例: 10000' : '例: 3200'}
                 value={amountStr}
                 onChange={(e) => setAmountStr(e.target.value)}
                 required
@@ -329,7 +418,7 @@ export function QuickExpenseForm({
 
             {/* Quick Amount Buttons */}
             <div className="mt-1.5 flex items-center flex-wrap gap-1.5">
-              {[100, 500, 1000, 3000, 5000].map((val) => (
+              {quickAmounts.map((val) => (
                 <button
                   key={val}
                   type="button"
@@ -348,7 +437,11 @@ export function QuickExpenseForm({
           <div className="flex items-center justify-between mb-1">
             <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
               <Tag className="w-3.5 h-3.5 text-slate-400" />
-              <span>4. メモ（品名・購入先など）</span>
+              <span>
+                {txType === 'income'
+                  ? '4. 入金メモ（理由・内訳など）'
+                  : '4. メモ（品名・購入先など）'}
+              </span>
               <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
                 必須
               </span>
@@ -357,7 +450,11 @@ export function QuickExpenseForm({
           <input
             type="text"
             required
-            placeholder="例: スーパー買い出し / Amazon 日用品・書籍など"
+            placeholder={
+              txType === 'income'
+                ? '例: 月の途中の追加入金 / 食材費の追加補充'
+                : '例: スーパー買い出し / Amazon 日用品・書籍など'
+            }
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
             className="w-full px-3.5 py-2 rounded-xl border border-stone-200 bg-[#faf8f5] focus:bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-300"
@@ -382,7 +479,7 @@ export function QuickExpenseForm({
           {justSaved && (
             <span className="inline-flex items-center gap-1 text-xs font-bold text-teal-600">
               <Check className="w-4 h-4" />
-              トランザクション一覧に反映しました！
+              収支履歴に反映しました！
             </span>
           )}
           <button
@@ -392,15 +489,27 @@ export function QuickExpenseForm({
               parseInt(amountStr, 10) <= 0 ||
               !memo.trim()
             }
-            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-teal-600/90 hover:bg-teal-600 disabled:bg-stone-200 disabled:text-slate-400 text-white font-bold text-sm shadow-2xs transition flex items-center justify-center gap-2"
+            className={`w-full sm:w-auto px-6 py-2.5 rounded-xl disabled:bg-stone-200 disabled:text-slate-400 text-white font-bold text-sm shadow-2xs transition flex items-center justify-center gap-2 ${
+              txType === 'income'
+                ? 'bg-emerald-600 hover:bg-emerald-700'
+                : 'bg-teal-600/90 hover:bg-teal-600'
+            }`}
           >
-            <PlusCircle className="w-4 h-4" />
+            {txType === 'income' ? (
+              <ArrowDownCircle className="w-4 h-4" />
+            ) : (
+              <PlusCircle className="w-4 h-4" />
+            )}
             <span>
-              {isSavingsCat && savingsType === 'deposit'
+              {txType === 'income'
+                ? `${currentCatObj?.name || '科目'}へ追加入金する`
+                : isSavingsCat && savingsType === 'deposit'
                 ? '積立を記録する'
                 : '支出を記録する'}
               {amountStr && parseInt(amountStr, 10) > 0
-                ? ` (${formatYen(parseInt(amountStr, 10))})`
+                ? ` (${txType === 'income' ? '+' : ''}${formatYen(
+                    parseInt(amountStr, 10)
+                  )})`
                 : ''}
             </span>
           </button>

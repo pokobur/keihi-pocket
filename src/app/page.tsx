@@ -47,6 +47,9 @@ export default function KeihiPocketDashboard() {
   const [quickFormCategory, setQuickFormCategory] =
     useState<CategoryId>('food');
   const [isQuickExpenseModalOpen, setIsQuickExpenseModalOpen] = useState(false);
+  const [quickModalInitialType, setQuickModalInitialType] = useState<
+    'expense' | 'income'
+  >('expense');
   const [newlyAddedTxId, setNewlyAddedTxId] = useState<string | null>(null);
 
   const [budgetModalState, setBudgetModalState] = useState<{
@@ -127,6 +130,7 @@ export default function KeihiPocketDashboard() {
 
   const handleQuickAddForCategory = (categoryId: CategoryId) => {
     setQuickFormCategory(categoryId);
+    setQuickModalInitialType('expense');
     setIsQuickExpenseModalOpen(true);
   };
 
@@ -195,7 +199,14 @@ export default function KeihiPocketDashboard() {
           netBilling={netBilling}
           onOpenBudgetModal={(tab) => handleOpenBudgetModal(tab)}
           onOpenDataModal={() => setIsDataModalOpen(true)}
-          onOpenQuickExpenseModal={() => setIsQuickExpenseModalOpen(true)}
+          onOpenQuickExpenseModal={() => {
+            setQuickModalInitialType('expense');
+            setIsQuickExpenseModalOpen(true);
+          }}
+          onOpenQuickIncomeModal={() => {
+            setQuickModalInitialType('income');
+            setIsQuickExpenseModalOpen(true);
+          }}
         />
 
         {/* 2. 科目別ステータスカード */}
@@ -258,13 +269,14 @@ export default function KeihiPocketDashboard() {
         <span>支出を記録</span>
       </button>
 
-      {/* Quick Expense Modal */}
+      {/* Quick Expense / Income Modal */}
       {isQuickExpenseModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <QuickExpenseForm
             categories={data.settings.categories}
             currentCycle={currentCycle}
             selectedCategoryId={quickFormCategory}
+            initialTxType={quickModalInitialType}
             onAddTransaction={handleAddTransaction}
             isModal
             onCloseModal={() => setIsQuickExpenseModalOpen(false)}

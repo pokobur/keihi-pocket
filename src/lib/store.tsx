@@ -151,6 +151,7 @@ interface StoreContextValue {
   currentCycle: MonthlyCycle;
   addTransaction: (input: {
     date: string;
+    type?: 'expense' | 'income';
     categoryId: CategoryId;
     amount: number;
     memo: string;
@@ -161,6 +162,7 @@ interface StoreContextValue {
     id: string,
     updates: {
       date?: string;
+      type?: 'expense' | 'income';
       categoryId?: CategoryId;
       amount?: number;
       memo?: string;
@@ -365,25 +367,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const computedCycleId =
       input.forceCycleId ||
       getCycleIdFromDate(input.date, data.settings.cycleStartDay);
+    const txType = input.type || 'expense';
     const catObj = data.settings.categories.find(
       (c) => c.id === input.categoryId
     );
     const isCredit = catObj ? catObj.isCredit : input.categoryId === 'net_payment';
     const isSavings = catObj ? catObj.isSavings : input.categoryId === 'savings';
 
-    const billingMonth = isCredit
-      ? getBillingMonthForDate(input.date, data.settings.creditCardClosingDay)
-      : null;
+    const billingMonth =
+      txType === 'expense' && isCredit
+        ? getBillingMonthForDate(input.date, data.settings.creditCardClosingDay)
+        : null;
 
     const newTx: Transaction = {
       id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       cycleId: computedCycleId,
       date: input.date,
+      type: txType,
       categoryId: input.categoryId,
       amount: Math.round(Number(input.amount) || 0),
       memo: input.memo.trim(),
       billingMonth,
-      savingsType: isSavings ? input.savingsType || 'withdrawal' : undefined,
+      savingsType:
+        txType === 'expense' && isSavings
+          ? input.savingsType || 'withdrawal'
+          : undefined,
       createdAt: new Date().toISOString(),
     };
 
@@ -400,6 +408,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           a.cycleId.localeCompare(b.cycleId)
         );
       }
+
+      // 入金トランザクションの場合は該当サイクルの総入金額および対象科目の当月基本予算枠に自動加算
+      if (txType === 'income') {
+        updatedCycles = updatedCycles.map((c) => {
+          if (c.cycleId !== computedCycleId) return c;
+          const prevCatAlloc = c.allocations[newTx.categoryId] || {
+            base: 0,
+            carryover: 0,
+          };
+          return {
+            ...c,
+            income: (c.income || 0) + newTx.amount,
+            allocations: {
+              ...c.allocations,
+              [newTx.categoryId]: {
+                ...prevCatAlloc,
+                base: (prevCatAlloc.base || 0) + newTx.amount,
+              },
+            },
+          };
+        });
+      }
+
       const nextData: KeihiPocketData = {
         ...prev,
         monthlyCycles: updatedCycles,
@@ -426,40 +457,113 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     updates
   ) => {
     setData((prev) => {
-      const updatedTxs = prev.transactions.map((tx) => {
-        if (tx.id !== id) return tx;
-        const nextDate = updates.date ?? tx.date;
-        const nextCategory = updates.categoryId ?? tx.categoryId;
-        const catObj = prev.settings.categories.find(
-          (c) => c.id === nextCategory
-        );
-        const isCredit = catObj ? catObj.isCredit : nextCategory === 'net_payment';
-        const isSavings = catObj ? catObj.isSavings : nextCategory === 'savings';
+      const oldTx = prev.transactions.find((t) => t.id === id);
+      if (!oldTx) return prev;
 
-        const nextCycleId = getCycleIdFromDate(
-          nextDate,
-          prev.settings.cycleStartDay
-        );
-        const nextBillingMonth = isCredit
+      const nextDate = updates.date ?? oldTx.date;
+      const nextCategory = updates.categoryId ?? oldTx.categoryId;
+      const nextType = updates.type ?? oldTx.type ?? 'expense';
+      const nextAmount =
+        updates.amount !== undefined
+          ? Math.round(Number(updates.amount) || 0)
+          : oldTx.amount;
+      const catObj = prev.settings.categories.find(
+        (c) => c.id === nextCategory
+      );
+      const isCredit = catObj ? catObj.isCredit : nextCategory === 'net_payment';
+      const isSavings = catObj ? catObj.isSavings : nextCategory === 'savings';
+
+      const nextCycleId = getCycleIdFromDate(
+        nextDate,
+        prev.settings.cycleStartDay
+      );
+      const nextBillingMonth =
+        nextType === 'expense' && isCredit
           ? getBillingMonthForDate(
               nextDate,
               prev.settings.creditCardClosingDay
             )
           : null;
-        return {
-          ...tx,
-          ...updates,
-          date: nextDate,
-          categoryId: nextCategory,
-          cycleId: nextCycleId,
-          billingMonth: nextBillingMonth,
-          savingsType: isSavings
-            ? updates.savingsType ?? tx.savingsType ?? 'withdrawal'
+
+      const updatedTx: Transaction = {
+        ...oldTx,
+        ...updates,
+        type: nextType,
+        amount: nextAmount,
+        date: nextDate,
+        categoryId: nextCategory,
+        cycleId: nextCycleId,
+        billingMonth: nextBillingMonth,
+        savingsType:
+          nextType === 'expense' && isSavings
+            ? updates.savingsType ?? oldTx.savingsType ?? 'withdrawal'
             : undefined,
-        };
-      });
+      };
+
+      const updatedTxs = prev.transactions.map((tx) =>
+        tx.id === id ? updatedTx : tx
+      );
+
+      let updatedCycles = [...prev.monthlyCycles];
+
+      // 旧トランザクションが入金だった場合、まず旧加算分を差し引く
+      if (oldTx.type === 'income') {
+        updatedCycles = updatedCycles.map((c) => {
+          if (c.cycleId !== oldTx.cycleId) return c;
+          const prevAlloc = c.allocations[oldTx.categoryId] || {
+            base: 0,
+            carryover: 0,
+          };
+          return {
+            ...c,
+            income: Math.max(0, (c.income || 0) - oldTx.amount),
+            allocations: {
+              ...c.allocations,
+              [oldTx.categoryId]: {
+                ...prevAlloc,
+                base: Math.max(0, (prevAlloc.base || 0) - oldTx.amount),
+              },
+            },
+          };
+        });
+      }
+
+      // 更新後トランザクションが入金の場合、新加算分を反映する
+      if (updatedTx.type === 'income') {
+        if (!updatedCycles.some((c) => c.cycleId === updatedTx.cycleId)) {
+          const created = createCycleObject(
+            updatedTx.cycleId,
+            prev.settings,
+            updatedCycles,
+            updatedTxs
+          );
+          updatedCycles = [...updatedCycles, created].sort((a, b) =>
+            a.cycleId.localeCompare(b.cycleId)
+          );
+        }
+        updatedCycles = updatedCycles.map((c) => {
+          if (c.cycleId !== updatedTx.cycleId) return c;
+          const prevAlloc = c.allocations[updatedTx.categoryId] || {
+            base: 0,
+            carryover: 0,
+          };
+          return {
+            ...c,
+            income: (c.income || 0) + updatedTx.amount,
+            allocations: {
+              ...c.allocations,
+              [updatedTx.categoryId]: {
+                ...prevAlloc,
+                base: (prevAlloc.base || 0) + updatedTx.amount,
+              },
+            },
+          };
+        });
+      }
+
       const nextData: KeihiPocketData = {
         ...prev,
+        monthlyCycles: updatedCycles,
         transactions: updatedTxs,
       };
       return pruneExpiredCyclesAndTransactions(nextData).prunedData;
@@ -467,10 +571,38 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const deleteTransaction = (id: string) => {
-    setData((prev) => ({
-      ...prev,
-      transactions: prev.transactions.filter((t) => t.id !== id),
-    }));
+    setData((prev) => {
+      const targetTx = prev.transactions.find((t) => t.id === id);
+      if (!targetTx) return prev;
+
+      let updatedCycles = prev.monthlyCycles;
+      if (targetTx.type === 'income') {
+        updatedCycles = updatedCycles.map((c) => {
+          if (c.cycleId !== targetTx.cycleId) return c;
+          const prevAlloc = c.allocations[targetTx.categoryId] || {
+            base: 0,
+            carryover: 0,
+          };
+          return {
+            ...c,
+            income: Math.max(0, (c.income || 0) - targetTx.amount),
+            allocations: {
+              ...c.allocations,
+              [targetTx.categoryId]: {
+                ...prevAlloc,
+                base: Math.max(0, (prevAlloc.base || 0) - targetTx.amount),
+              },
+            },
+          };
+        });
+      }
+
+      return {
+        ...prev,
+        monthlyCycles: updatedCycles,
+        transactions: prev.transactions.filter((t) => t.id !== id),
+      };
+    });
   };
 
   const updateBaseBudgets: StoreContextValue['updateBaseBudgets'] = (
@@ -636,9 +768,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     incomeMemo
   ) => {
     setData((prev) => {
-      const exists = prev.monthlyCycles.some((c) => c.cycleId === cycleId);
+      const existingCycle = prev.monthlyCycles.find(
+        (c) => c.cycleId === cycleId
+      );
+      const { startDate, endDate } = getCycleDateRange(cycleId);
+
+      // モーダルから当月入金・基本予算枠が追加された場合、増額分を入金履歴トランザクションとして記録
+      const addedIncomeTxs: Transaction[] = [];
+      if (income !== undefined) {
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(
+          now.getMonth() + 1
+        ).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const txDate =
+          todayStr >= startDate && todayStr <= endDate ? todayStr : startDate;
+
+        for (const cat of prev.settings.categories) {
+          const oldBase = existingCycle?.allocations[cat.id]?.base || 0;
+          const newBase = allocations[cat.id]?.base || 0;
+          const diff = newBase - oldBase;
+          if (diff > 0) {
+            addedIncomeTxs.push({
+              id: `tx_${Date.now()}_${cat.id}_${Math.random()
+                .toString(36)
+                .slice(2, 5)}`,
+              cycleId,
+              date: txDate,
+              type: 'income',
+              categoryId: cat.id,
+              amount: diff,
+              memo: incomeMemo?.trim()
+                ? `${incomeMemo.trim()}（${cat.name}へ入金配分）`
+                : `${cat.name}への入金・予算配分`,
+              billingMonth: null,
+              createdAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
       let updatedCycles: MonthlyCycle[];
-      if (exists) {
+      if (existingCycle) {
         updatedCycles = prev.monthlyCycles.map((c) => {
           if (c.cycleId !== cycleId) return c;
           return {
@@ -650,7 +820,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           };
         });
       } else {
-        const { startDate, endDate } = getCycleDateRange(cycleId);
         const newCycle: MonthlyCycle = {
           cycleId,
           startDate,
@@ -669,6 +838,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return {
         ...prev,
         monthlyCycles: updatedCycles,
+        transactions:
+          addedIncomeTxs.length > 0
+            ? [...addedIncomeTxs, ...prev.transactions]
+            : prev.transactions,
       };
     });
   };

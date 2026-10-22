@@ -132,7 +132,9 @@ export function calculateNetPaymentBilling(
   );
   if (creditIds.size === 0) creditIds.add('net_payment');
 
-  const netTxs = transactions.filter((t) => creditIds.has(t.categoryId));
+  const netTxs = transactions.filter(
+    (t) => creditIds.has(t.categoryId) && t.type !== 'income'
+  );
 
   let confirmedFromPrevCycle = 0;
   let confirmedFromCurrentCycle = 0;
@@ -206,7 +208,9 @@ export function calculateCycleSummary(
     const carryoverBudget = alloc.carryover;
     const effectiveLimit = baseBudget + carryoverBudget;
 
-    const catTxs = cycleTxs.filter((t) => t.categoryId === cat.id);
+    const catTxs = cycleTxs.filter(
+      (t) => t.categoryId === cat.id && t.type !== 'income'
+    );
 
     if (cat.isSavings) {
       const withdrawal = catTxs
