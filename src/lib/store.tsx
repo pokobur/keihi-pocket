@@ -14,6 +14,7 @@ import {
   Transaction,
 } from '@/types';
 import {
+  calculateEndDateFromStartDate,
   calculatePreviousCycleCarryoverInfo,
   getBillingMonthForDate,
   getCycleDateRange,
@@ -107,7 +108,11 @@ function createCycleObject(
   existingCycles: MonthlyCycle[],
   transactions: Transaction[]
 ): MonthlyCycle {
-  const { startDate, endDate } = getCycleDateRange(cycleId);
+  const { startDate, endDate } = getCycleDateRange(
+    cycleId,
+    undefined,
+    settings.cycleStartDay
+  );
   const prevInfo = calculatePreviousCycleCarryoverInfo(
     cycleId,
     existingCycles,
@@ -118,7 +123,7 @@ function createCycleObject(
   const defaultAllocations: CycleAllocations = {};
 
   for (const cat of settings.categories) {
-    // 毎月25日に自動入金は行わず、当月基本枠(base)は0円で開始し、前月繰越のみ引き継ぐ
+    // 毎月の自動入金は行わず、当月基本枠(base)は0円で開始し、前月繰越のみ引き継ぐ
     defaultAllocations[cat.id] = {
       base: 0,
       carryover: prevInfo.hasPrevCycle
@@ -194,7 +199,13 @@ interface StoreContextValue {
     carryoverTotal: number,
     allocations: CycleAllocations,
     income?: number,
-    incomeMemo?: string
+    incomeMemo?: string,
+    customDates?: { startDate?: string; endDate?: string }
+  ) => void;
+  updateCycleDates: (
+    cycleId: string,
+    startDate: string,
+    endDate?: string
   ) => void;
   transferBudgetInCycle: (
     cycleId: string,
@@ -366,7 +377,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const addTransaction: StoreContextValue['addTransaction'] = (input) => {
     const computedCycleId =
       input.forceCycleId ||
-      getCycleIdFromDate(input.date, data.settings.cycleStartDay);
+      getCycleIdFromDate(
+        input.date,
+        data.settings.cycleStartDay,
+        data.monthlyCycles
+      );
     const txType = input.type || 'expense';
     const catObj = data.settings.categories.find(
       (c) => c.id === input.categoryId
@@ -475,7 +490,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       const nextCycleId = getCycleIdFromDate(
         nextDate,
-        prev.settings.cycleStartDay
+        prev.settings.cycleStartDay,
+        prev.monthlyCycles
       );
       const nextBillingMonth =
         nextType === 'expense' && isCredit
@@ -765,13 +781,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     carryoverTotal,
     allocations,
     income,
-    incomeMemo
+    incomeMemo,
+    customDates
   ) => {
     setData((prev) => {
       const existingCycle = prev.monthlyCycles.find(
         (c) => c.cycleId === cycleId
       );
-      const { startDate, endDate } = getCycleDateRange(cycleId);
+      const defaultRange = getCycleDateRange(
+        cycleId,
+        existingCycle,
+        prev.settings.cycleStartDay
+      );
+      const effectiveStartDate =
+        customDates?.startDate ||
+        existingCycle?.startDate ||
+        defaultRange.startDate;
+      const effectiveEndDate =
+        customDates?.endDate ||
+        (customDates?.startDate
+          ? calculateEndDateFromStartDate(customDates.startDate)
+          : existingCycle?.endDate || defaultRange.endDate);
 
       // モーダルから当月入金・基本予算枠が追加された場合、増額分を入金履歴トランザクションとして記録
       const addedIncomeTxs: Transaction[] = [];
@@ -781,7 +811,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           now.getMonth() + 1
         ).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const txDate =
-          todayStr >= startDate && todayStr <= endDate ? todayStr : startDate;
+          customDates?.startDate ||
+          (todayStr >= effectiveStartDate && todayStr <= effectiveEndDate
+            ? todayStr
+            : effectiveStartDate);
 
         for (const cat of prev.settings.categories) {
           const oldBase = existingCycle?.allocations[cat.id]?.base || 0;
@@ -813,6 +846,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           if (c.cycleId !== cycleId) return c;
           return {
             ...c,
+            startDate: effectiveStartDate,
+            endDate: effectiveEndDate,
             carryoverTotal,
             allocations,
             income: income !== undefined ? income : c.income,
@@ -822,8 +857,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       } else {
         const newCycle: MonthlyCycle = {
           cycleId,
-          startDate,
-          endDate,
+          startDate: effectiveStartDate,
+          endDate: effectiveEndDate,
           income: income ?? 0,
           incomeMemo,
           carryoverTotal,
@@ -842,6 +877,45 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           addedIncomeTxs.length > 0
             ? [...addedIncomeTxs, ...prev.transactions]
             : prev.transactions,
+      };
+    });
+  };
+
+  const updateCycleDates: StoreContextValue['updateCycleDates'] = (
+    cycleId,
+    startDate,
+    endDate
+  ) => {
+    const computedEndDate =
+      endDate || calculateEndDateFromStartDate(startDate);
+    setData((prev) => {
+      const exists = prev.monthlyCycles.some((c) => c.cycleId === cycleId);
+      if (!exists) {
+        const created = createCycleObject(
+          cycleId,
+          prev.settings,
+          prev.monthlyCycles,
+          prev.transactions
+        );
+        created.startDate = startDate;
+        created.endDate = computedEndDate;
+        return {
+          ...prev,
+          monthlyCycles: [...prev.monthlyCycles, created].sort((a, b) =>
+            a.cycleId.localeCompare(b.cycleId)
+          ),
+        };
+      }
+      return {
+        ...prev,
+        monthlyCycles: prev.monthlyCycles.map((c) => {
+          if (c.cycleId !== cycleId) return c;
+          return {
+            ...c,
+            startDate,
+            endDate: computedEndDate,
+          };
+        }),
       };
     });
   };
@@ -1004,6 +1078,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         updateCategory,
         deleteCategory,
         updateCycleAllocations,
+        updateCycleDates,
         transferBudgetInCycle,
         exportJson,
         importJson,

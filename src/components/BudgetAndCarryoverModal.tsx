@@ -16,6 +16,7 @@ import {
   FolderPlus,
   Trash2,
   Plus,
+  Calendar,
 } from 'lucide-react';
 import {
   AppSettings,
@@ -29,9 +30,11 @@ import {
 } from '@/types';
 import {
   calculateCycleSummary,
+  calculateEndDateFromStartDate,
   calculatePreviousCycleCarryoverInfo,
   formatYen,
   getCycleDateRange,
+  pad2,
 } from '@/lib/calculations';
 import {
   CategoryIcon,
@@ -56,7 +59,8 @@ interface BudgetAndCarryoverModalProps {
     carryoverTotal: number,
     allocations: CycleAllocations,
     income?: number,
-    incomeMemo?: string
+    incomeMemo?: string,
+    customDates?: { startDate?: string; endDate?: string }
   ) => void;
   onTransferBudget: (
     cycleId: string,
@@ -140,6 +144,12 @@ export function BudgetAndCarryoverModal({
   const [cycleIncomeMemo, setCycleIncomeMemo] = useState<string>(
     currentCycle.incomeMemo || ''
   );
+  const [cycleStartDateInput, setCycleStartDateInput] = useState<string>(
+    currentCycle.startDate
+  );
+  const [cycleEndDateInput, setCycleEndDateInput] = useState<string>(
+    currentCycle.endDate
+  );
   const [cycleBaseInputs, setCycleBaseInputs] = useState<
     Record<CategoryId, number>
   >({});
@@ -205,12 +215,18 @@ export function BudgetAndCarryoverModal({
     setCategoryNames(nextCatNames);
     setCycleIncomeInput(currentCycle.income);
     setCycleIncomeMemo(currentCycle.incomeMemo || '');
+    setCycleStartDateInput(currentCycle.startDate);
+    setCycleEndDateInput(currentCycle.endDate);
     setBaseIncomeSetting(settings.baseMonthlyIncome);
   }, [currentCycle, settings, isOpen]);
 
   if (!isOpen) return null;
 
-  const { titleLabel, rangeLabel } = getCycleDateRange(currentCycle.cycleId);
+  const { titleLabel, rangeLabel } = getCycleDateRange(
+    currentCycle.cycleId,
+    { startDate: cycleStartDateInput, endDate: cycleEndDateInput },
+    settings.cycleStartDay
+  );
   const cycleSummary = calculateCycleSummary(
     currentCycle,
     settings,
@@ -345,9 +361,15 @@ export function BudgetAndCarryoverModal({
       currentCycle.carryoverTotal,
       nextAllocations,
       cycleIncomeInput,
-      cycleIncomeMemo
+      cycleIncomeMemo,
+      {
+        startDate: cycleStartDateInput,
+        endDate: cycleEndDateInput,
+      }
     );
-    setSavedNotice(`${titleLabel}の手動入金額と予算配分を保存しました`);
+    setSavedNotice(
+      `${titleLabel}の入金日（${cycleStartDateInput}）と予算配分を保存しました`
+    );
     setTimeout(() => setSavedNotice(null), 2500);
   };
 
@@ -975,8 +997,65 @@ export function BudgetAndCarryoverModal({
                       </span>
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      毎月25日の自動入金は行われません。当月分の入金額を手動で入力し、各科目へ予算を配分してください。
+                      自動入金は行われません。当月分の入金日・入金額・各科目への予算配分を任意に指定できます。
                     </p>
+                  </div>
+                </div>
+
+                {/* 経費の入金日（サイクル期間）の任意指定 */}
+                <div className="bg-gradient-to-r from-teal-50/90 via-emerald-50/70 to-teal-50/80 border border-teal-200/80 rounded-xl p-3.5 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-xs sm:text-sm font-bold text-teal-900 flex items-center gap-1.5">
+                        <Calendar className="w-4 h-4 text-teal-600" />
+                        当月の入金日（サイクル開始日）
+                      </span>
+                      <p className="text-[11px] text-teal-700 mt-0.5">
+                        毎月入金日が変動する場合でも、ここで任意の日付を指定できます。
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={cycleStartDateInput}
+                        onChange={(e) => {
+                          const newStart = e.target.value;
+                          setCycleStartDateInput(newStart);
+                          if (newStart) {
+                            setCycleEndDateInput(
+                              calculateEndDateFromStartDate(newStart)
+                            );
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-xl border border-stone-200 bg-white font-bold text-xs sm:text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          const today = `${now.getFullYear()}-${pad2(
+                            now.getMonth() + 1
+                          )}-${pad2(now.getDate())}`;
+                          setCycleStartDateInput(today);
+                          setCycleEndDateInput(
+                            calculateEndDateFromStartDate(today)
+                          );
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-white border border-teal-200 text-[11px] font-bold text-teal-700 hover:bg-teal-50 transition"
+                      >
+                        今日
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between text-xs text-teal-800 pt-1 border-t border-teal-200/60">
+                    <span>
+                      適用されるサイクル期間:{' '}
+                      <strong>{rangeLabel}</strong>（{cycleStartDateInput} 〜{' '}
+                      {cycleEndDateInput}）
+                    </span>
+                    <span className="text-[11px] text-teal-600 font-semibold">
+                      ※ 終了日は翌月入金日の前日へ自動連動します
+                    </span>
                   </div>
                 </div>
 

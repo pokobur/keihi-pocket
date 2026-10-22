@@ -62,8 +62,8 @@ export function CycleHeader({
   onOpenQuickExpenseModal,
   onOpenQuickIncomeModal,
 }: CycleHeaderProps) {
-  const { titleLabel, rangeLabel } = getCycleDateRange(cycle.cycleId);
-  const countdowns = calculateCountdowns();
+  const { titleLabel, rangeLabel } = getCycleDateRange(cycle.cycleId, cycle);
+  const countdowns = calculateCountdowns(new Date(), cycle.startDate);
   const todayCycleId = getCycleIdFromDate(countdowns.todayStr);
 
   const prevCycleId = getAdjacentCycleId(cycle.cycleId, -1);
@@ -194,9 +194,17 @@ export function CycleHeader({
               <span className="text-sm sm:text-base font-bold text-slate-700">
                 {titleLabel}
               </span>
-              <span className="text-xs sm:text-sm font-semibold text-teal-700 bg-teal-50/80 px-2.5 py-0.5 rounded-lg border border-teal-200/60">
-                {rangeLabel}
-              </span>
+              <button
+                type="button"
+                onClick={() => onOpenBudgetModal('base')}
+                className="text-xs sm:text-sm font-semibold text-teal-700 bg-teal-50/80 hover:bg-teal-100/90 px-2.5 py-0.5 rounded-lg border border-teal-200/60 transition flex items-center gap-1.5"
+                title="入金日やサイクル期間・予算配分を変更"
+              >
+                <span>{rangeLabel}</span>
+                <span className="text-[10px] text-teal-700 font-bold bg-white px-1.5 py-0.2 rounded border border-teal-200/80">
+                  入金日変更
+                </span>
+              </button>
             </div>
 
             <button
@@ -229,7 +237,7 @@ export function CycleHeader({
             )}
           </div>
 
-          {/* Countdowns (10th closing & 25th payday) */}
+          {/* Countdowns (10th closing & payday) */}
           <div className="flex items-center flex-wrap gap-2">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50/70 border border-indigo-200/60 text-indigo-800 text-xs font-medium">
               <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
@@ -246,14 +254,11 @@ export function CycleHeader({
 
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-teal-50/70 border border-teal-200/60 text-teal-800 text-xs font-medium">
               <CalendarClock className="w-3.5 h-3.5 text-teal-500" />
-              <span>サイクル切替(25日)まで</span>
+              <span>入金・切替({countdowns.nextPaydayLabel})まで</span>
               <span className="font-bold text-teal-700 text-sm">
-                {countdowns.daysUntilPayday25 === 0
-                  ? '本日サイクル開始日'
-                  : `あと${countdowns.daysUntilPayday25}日`}
-              </span>
-              <span className="text-[10px] text-teal-500">
-                ({countdowns.nextPaydayLabel})
+                {countdowns.daysUntilPayday === 0
+                  ? '本日入金日'
+                  : `あと${countdowns.daysUntilPayday}日`}
               </span>
             </div>
           </div>

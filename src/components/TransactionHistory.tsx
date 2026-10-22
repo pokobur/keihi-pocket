@@ -76,7 +76,10 @@ export function TransactionHistory({
   const [editAmount, setEditAmount] = useState('');
   const [editMemo, setEditMemo] = useState('');
 
-  const { titleLabel, rangeLabel } = getCycleDateRange(currentCycle.cycleId);
+  const { titleLabel, rangeLabel } = getCycleDateRange(
+    currentCycle.cycleId,
+    currentCycle
+  );
 
   const creditIds = useMemo(() => {
     const set = new Set(

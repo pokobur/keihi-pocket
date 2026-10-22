@@ -43,10 +43,32 @@ export function getAdjacentCycleId(cycleId: string, offset: number): string {
 }
 
 /**
- * 任意の日付 (YYYY-MM-DD) が属する月次サイクルID (YYYY-MM) を返す
- * 毎月25日〜翌月24日を1サイクルとする
+ * 入金日（サイクル開始日 YYYY-MM-DD）からサイクル終了日（翌月入金日の前日）を自動算出
+ * 例: "2026-10-25" -> "2026-11-24", "2026-10-23" -> "2026-11-22"
  */
-export function getCycleIdFromDate(dateStr: string, cycleStartDay = 25): string {
+export function calculateEndDateFromStartDate(startDateStr: string): string {
+  const [y, m, d] = startDateStr.split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const nextMonthDate = new Date(y, m - 1 + 1, d);
+  nextMonthDate.setDate(nextMonthDate.getDate() - 1);
+  return `${nextMonthDate.getFullYear()}-${pad2(nextMonthDate.getMonth() + 1)}-${pad2(nextMonthDate.getDate())}`;
+}
+
+/**
+ * 任意の日付 (YYYY-MM-DD) が属する月次サイクルID (YYYY-MM) を返す
+ * monthlyCyclesが与えられている場合は、ユーザーが任意設定したサイクル期間 (startDate 〜 endDate) を優先判定
+ */
+export function getCycleIdFromDate(
+  dateStr: string,
+  cycleStartDay = 25,
+  monthlyCycles?: { cycleId: string; startDate: string; endDate: string }[]
+): string {
+  if (monthlyCycles && monthlyCycles.length > 0) {
+    const matched = monthlyCycles.find(
+      (c) => dateStr >= c.startDate && dateStr <= c.endDate
+    );
+    if (matched) return matched.cycleId;
+  }
   const [y, m, d] = dateStr.split('-').map(Number);
   if (!y || !m || !d) return '2026-10';
   if (d >= cycleStartDay) {
@@ -58,8 +80,13 @@ export function getCycleIdFromDate(dateStr: string, cycleStartDay = 25): string 
 
 /**
  * サイクルID (例: "2026-10") から期間 (startDate, endDate) と表示ラベルを算出
+ * customDates（ユーザーが任意指定した入金日・終了日）がある場合はそれを優先反映
  */
-export function getCycleDateRange(cycleId: string): {
+export function getCycleDateRange(
+  cycleId: string,
+  customDates?: { startDate?: string; endDate?: string },
+  defaultCycleStartDay = 25
+): {
   startDate: string;
   endDate: string;
   titleLabel: string;
@@ -67,17 +94,26 @@ export function getCycleDateRange(cycleId: string): {
   fullLabel: string;
 } {
   const { year, month } = parseCycleId(cycleId);
-  const startDate = `${year}-${pad2(month)}-25`;
-  const nextYM = formatYearMonth(year, month + 1);
-  const { year: nextYear, month: nextMonth } = parseCycleId(nextYM);
-  const endDate = `${nextYear}-${pad2(nextMonth)}-24`;
+  const defaultStartDate = `${year}-${pad2(month)}-${pad2(defaultCycleStartDay)}`;
+  const defaultEndDate = calculateEndDateFromStartDate(defaultStartDate);
+
+  const startDate = customDates?.startDate || defaultStartDate;
+  const endDate =
+    customDates?.endDate ||
+    (customDates?.startDate
+      ? calculateEndDateFromStartDate(customDates.startDate)
+      : defaultEndDate);
+
+  const sParts = startDate.split('-').map(Number);
+  const eParts = endDate.split('-').map(Number);
+  const rangeLabel = `${sParts[1]}/${sParts[2]} - ${eParts[1]}/${eParts[2]}`;
 
   return {
     startDate,
     endDate,
     titleLabel: `${year}年${month}月度`,
-    rangeLabel: `${month}/25 - ${nextMonth}/24`,
-    fullLabel: `${year}年${month}月度: ${month}/25 - ${nextMonth}/24`,
+    rangeLabel,
+    fullLabel: `${year}年${month}月度: ${rangeLabel}`,
   };
 }
 
@@ -542,11 +578,17 @@ export function calculatePreviousCycleCarryoverInfo(
 }
 
 /**
- * 次の区切り（10日締め・25日入金）までのカウントダウンを算出
+ * 次の区切り（10日締め・入金日）までのカウントダウンを算出
+ * targetPaydayDateStr が渡された場合はその入金日（YYYY-MM-DD）までの日数を算出
  */
-export function calculateCountdowns(now: Date = new Date()): {
+export function calculateCountdowns(
+  now: Date = new Date(),
+  targetPaydayDateStr?: string,
+  defaultPayday = 25
+): {
   daysUntilClosing10: number;
   nextClosingLabel: string;
+  daysUntilPayday: number;
   daysUntilPayday25: number;
   nextPaydayLabel: string;
   todayStr: string;
@@ -567,20 +609,40 @@ export function calculateCountdowns(now: Date = new Date()): {
   );
 
   let nextPayday: Date;
-  if (d <= 25) {
-    nextPayday = new Date(y, m, 25);
+  let nextPaydayLabel: string;
+
+  if (targetPaydayDateStr) {
+    const [py, pm, pd] = targetPaydayDateStr.split('-').map(Number);
+    const candidate = new Date(py, pm - 1, pd);
+    if (candidate.getTime() >= today.getTime()) {
+      nextPayday = candidate;
+      nextPaydayLabel = `${pm}月${pd}日`;
+    } else {
+      // 過去日の場合は翌月同日またはデフォルト日
+      const nextMonthPayday = new Date(py, pm - 1 + 1, pd);
+      nextPayday = nextMonthPayday;
+      nextPaydayLabel = `${nextMonthPayday.getMonth() + 1}月${nextMonthPayday.getDate()}日`;
+    }
   } else {
-    nextPayday = new Date(y, m + 1, 25);
+    if (d <= defaultPayday) {
+      nextPayday = new Date(y, m, defaultPayday);
+    } else {
+      nextPayday = new Date(y, m + 1, defaultPayday);
+    }
+    nextPaydayLabel = `${nextPayday.getMonth() + 1}月${defaultPayday}日`;
   }
-  const daysUntilPayday25 = Math.round(
-    (nextPayday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+
+  const daysUntilPayday = Math.max(
+    0,
+    Math.round((nextPayday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
   );
 
   return {
     daysUntilClosing10,
     nextClosingLabel: `${nextClosing.getMonth() + 1}月10日`,
-    daysUntilPayday25,
-    nextPaydayLabel: `${nextPayday.getMonth() + 1}月25日`,
+    daysUntilPayday,
+    daysUntilPayday25: daysUntilPayday, // 後方互換性
+    nextPaydayLabel,
     todayStr: `${y}-${pad2(m + 1)}-${pad2(d)}`,
   };
 }

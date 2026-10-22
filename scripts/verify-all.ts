@@ -66,11 +66,27 @@ console.log('[Test 1] 日付・サイクル計算ユーティリティのテス�
   assert.equal(getCycleIdFromDate('2026-11-24'), '2026-10');
   assert.equal(getCycleIdFromDate('2026-11-25'), '2026-11');
 
-  // サイクル期間
+  // サイクル期間（標準25日入金 vs 任意入金日）
   const range10 = getCycleDateRange('2026-10');
   assert.equal(range10.startDate, '2026-10-25');
   assert.equal(range10.endDate, '2026-11-24');
   assert.equal(range10.titleLabel, '2026年10月度');
+
+  // 任意入金日（例: 10/23入金）のサイクル期間
+  const rangeCustom = getCycleDateRange('2026-10', { startDate: '2026-10-23' });
+  assert.equal(rangeCustom.startDate, '2026-10-23');
+  assert.equal(rangeCustom.endDate, '2026-11-22');
+  assert.equal(rangeCustom.rangeLabel, '10/23 - 11/22');
+
+  // 任意入金日のサイクル判定
+  const customCycleObj = { cycleId: '2026-10', startDate: '2026-10-23', endDate: '2026-11-22' };
+  assert.equal(getCycleIdFromDate('2026-10-23', 25, [customCycleObj]), '2026-10');
+  assert.equal(getCycleIdFromDate('2026-10-22', 25, [customCycleObj]), '2026-09');
+
+  // カウントダウン（任意入金日基準）
+  const cdCustom = calculateCountdowns(new Date('2026-10-22'), '2026-10-23');
+  assert.equal(cdCustom.daysUntilPayday, 1); // 10/22 -> 10/23 is 1 day
+  assert.equal(cdCustom.nextPaydayLabel, '10月23日');
 
   // クレカ10日締め判定
   assert.equal(getBillingMonthForDate('2026-10-10'), '2026-10-10');

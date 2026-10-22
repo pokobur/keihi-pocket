@@ -130,7 +130,7 @@ export function QuickExpenseForm({
   const isCreditCat = currentCatObj?.isCredit ?? categoryId === 'net_payment';
   const isSavingsCat = currentCatObj?.isSavings ?? categoryId === 'savings';
 
-  const targetCycleId = getCycleIdFromDate(date);
+  const targetCycleId = getCycleIdFromDate(date, 25, [currentCycle]);
   const isDifferentCycle = targetCycleId !== currentCycle.cycleId;
   const billingMonth =
     txType === 'expense' && isCreditCat ? getBillingMonthForDate(date) : null;
@@ -359,9 +359,9 @@ export function QuickExpenseForm({
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                <span>2. 日付</span>
+                <span>{txType === 'income' ? '2. 入金日' : '2. 日付'}</span>
               </label>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setDate(todayStr)}
@@ -373,9 +373,10 @@ export function QuickExpenseForm({
                   <button
                     type="button"
                     onClick={() => setDate(currentCycle.startDate)}
-                    className="text-[11px] font-semibold text-slate-400 hover:underline"
+                    className="text-[11px] font-semibold text-emerald-700 hover:underline"
                   >
-                    開始日({currentCycle.startDate.slice(5)})
+                    {txType === 'income' ? '入金日' : '開始日'}
+                    ({currentCycle.startDate.slice(5).replace('-', '/')})
                   </button>
                 )}
               </div>
