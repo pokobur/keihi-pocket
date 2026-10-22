@@ -22,6 +22,23 @@ import {
   MAX_RETENTION_MONTHS,
   pruneExpiredCyclesAndTransactions,
 } from '@/lib/calculations';
+import {
+  loadAppDataFromIDB,
+  loadFileHandleFromIDB,
+  removeFileHandleFromIDB,
+  saveAppDatatoIDB,
+  saveFileHandleToIDB,
+} from '@/lib/idb';
+import {
+  isFileSystemAccessSupported,
+  openLocalJsonFile,
+  queryPermission,
+  readDataFromFileHandle,
+  requestPermission,
+  saveAsLocalJsonFile,
+  verifyPermission,
+  writeDataToFileHandle,
+} from '@/lib/fileSystem';
 
 const STORAGE_KEY = 'keihi_pocket_data_v3';
 
@@ -219,6 +236,20 @@ interface StoreContextValue {
   importJson: (jsonStr: string) => { success: boolean; error?: string };
   clearAllTransactions: () => void;
   restoreSampleData: () => void;
+
+  // --- File System & Dual Persistence ---
+  isFSSupported: boolean;
+  activeFileName: string | null;
+  activeFileHandle: FileSystemFileHandle | null;
+  filePermissionState: PermissionState | 'none';
+  fileSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  lastFileSaveTime: Date | null;
+  openFile: () => Promise<boolean>;
+  saveFileAs: (suggestedName?: string) => Promise<boolean>;
+  saveToFile: () => Promise<boolean>;
+  reloadFromFile: () => Promise<boolean>;
+  disconnectFile: () => Promise<void>;
+  grantFilePermission: () => Promise<boolean>;
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null);
@@ -229,37 +260,84 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [autoPrunedNotice, setAutoPrunedNotice] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  useEffect(() => {
-    try {
-      let saved = localStorage.getItem(STORAGE_KEY);
-      let isMigratingFromOlderVersion = false;
-      if (!saved) {
-        const oldV2 = localStorage.getItem('keihi_pocket_data_v2');
-        const oldV1 = localStorage.getItem('keihi_pocket_data_v1');
-        if (oldV2 || oldV1) {
-          saved = oldV2 || oldV1;
-          isMigratingFromOlderVersion = true;
-        }
-      }
+  // File System Access API & Persistent handle state
+  const [activeFileName, setActiveFileName] = useState<string | null>(null);
+  const [activeFileHandle, setActiveFileHandle] = useState<FileSystemFileHandle | null>(null);
+  const [filePermissionState, setFilePermissionState] = useState<PermissionState | 'none'>('none');
+  const [fileSaveStatus, setFileSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [lastFileSaveTime, setLastFileSaveTime] = useState<Date | null>(null);
+  const [isFSSupported, setIsFSSupported] = useState<boolean>(false);
 
-      if (saved) {
-        const parsed = JSON.parse(saved) as KeihiPocketData;
-        if (parsed && parsed.settings && Array.isArray(parsed.monthlyCycles)) {
+  useEffect(() => {
+    setIsFSSupported(isFileSystemAccessSupported());
+
+    async function initializeData() {
+      try {
+        let loadedData: KeihiPocketData | null = null;
+        let isMigratingFromOlderVersion = false;
+
+        // 1. IndexedDB から優先読み込み（大容量・キャッシュ消去耐性）
+        const idbData = await loadAppDataFromIDB();
+        if (idbData && idbData.settings && Array.isArray(idbData.monthlyCycles)) {
+          loadedData = idbData;
+        }
+
+        // 2. IndexedDB にデータがない場合、従来の LocalStorage をフォールバック確認（既存データの自動移行）
+        if (!loadedData) {
+          let saved = localStorage.getItem(STORAGE_KEY);
+          if (!saved) {
+            const oldV2 = localStorage.getItem('keihi_pocket_data_v2');
+            const oldV1 = localStorage.getItem('keihi_pocket_data_v1');
+            if (oldV2 || oldV1) {
+              saved = oldV2 || oldV1;
+              isMigratingFromOlderVersion = true;
+            }
+          }
+
+          if (saved) {
+            const parsed = JSON.parse(saved) as KeihiPocketData;
+            if (parsed && parsed.settings && Array.isArray(parsed.monthlyCycles)) {
+              loadedData = parsed;
+            }
+          }
+        }
+
+        // 3. 前回IndexedDBに保存されていたファイルハンドル（FileSystemFileHandle）の確認
+        const storedHandleInfo = await loadFileHandleFromIDB();
+        if (storedHandleInfo) {
+          setActiveFileHandle(storedHandleInfo.handle);
+          setActiveFileName(storedHandleInfo.fileName);
+
+          const perm = await queryPermission(storedHandleInfo.handle, true);
+          setFilePermissionState(perm);
+
+          // 権限が既に許可されている場合は、PC上の最新ファイル（data.json）を再読み込みして同期
+          if (perm === 'granted') {
+            const fileResult = await readDataFromFileHandle(storedHandleInfo.handle);
+            if (fileResult && fileResult.data) {
+              loadedData = fileResult.data;
+              setFileSaveStatus('saved');
+              setLastFileSaveTime(new Date());
+            }
+          }
+        }
+
+        if (loadedData) {
           // サンプル・仮作成データの自動削除（tx_prev_ や tx_00 で始まる仮明細を排除）
-          parsed.transactions = (parsed.transactions || []).filter(
+          loadedData.transactions = (loadedData.transactions || []).filter(
             (t) => !t.id.startsWith('tx_prev_') && !t.id.startsWith('tx_00')
           );
 
           // 旧バージョンからの移行時は、基本支給額・デフォルト予算を0円にリセット（手動入金仕様へ統一）
           if (isMigratingFromOlderVersion) {
-            parsed.settings.baseMonthlyIncome = 0;
-            parsed.settings.categories = (parsed.settings.categories || []).map(
+            loadedData.settings.baseMonthlyIncome = 0;
+            loadedData.settings.categories = (loadedData.settings.categories || []).map(
               (cat) => ({
                 ...cat,
                 defaultBudget: 0,
               })
             );
-            parsed.monthlyCycles = parsed.monthlyCycles.map((c) => {
+            loadedData.monthlyCycles = loadedData.monthlyCycles.map((c) => {
               const cleanedAllocations: CycleAllocations = {};
               for (const [catId, alloc] of Object.entries(c.allocations)) {
                 cleanedAllocations[catId] = {
@@ -277,8 +355,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           }
 
           const { prunedData, removedCycleIds } =
-            pruneExpiredCyclesAndTransactions(parsed);
+            pruneExpiredCyclesAndTransactions(loadedData);
           setData(prunedData);
+
+          // 初回移行時に IndexedDB へ保存
+          await saveAppDatatoIDB(prunedData);
+
           if (removedCycleIds.length > 0) {
             setAutoPrunedNotice(
               `保持期間（${MAX_RETENTION_MONTHS}ヶ月）を過ぎた過去データ（${removedCycleIds.join(
@@ -296,23 +378,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             }
           }
         }
+      } catch (e) {
+        console.error('Failed to initialize KeihiPocketData:', e);
+      } finally {
+        setIsLoaded(true);
       }
-    } catch (e) {
-      console.error('Failed to load KeihiPocketData from LocalStorage:', e);
-    } finally {
-      setIsLoaded(true);
     }
+
+    initializeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 自動保存ロジック: IndexedDB への常時自動保存 ＋ 連携済みローカルファイルへの自動上書き保存
   useEffect(() => {
     if (!isLoaded) return;
+
+    // 1. IndexedDB への即時自動保存（大容量・永続バックアップ）
+    saveAppDatatoIDB(data);
+
+    // LocalStorage にも保険としてミラー保存
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error('Failed to save KeihiPocketData to LocalStorage:', e);
+    } catch {
+      // ignore quota errors
     }
-  }, [data, isLoaded]);
+
+    // 2. ローカルファイル連携中かつ書き込み権限がある場合、ファイルへ自動上書き保存（デバウンス500ms）
+    if (activeFileHandle && filePermissionState === 'granted') {
+      setFileSaveStatus('saving');
+      const timer = setTimeout(async () => {
+        const success = await writeDataToFileHandle(activeFileHandle, data);
+        if (success) {
+          setFileSaveStatus('saved');
+          setLastFileSaveTime(new Date());
+        } else {
+          setFileSaveStatus('error');
+        }
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [data, isLoaded, activeFileHandle, filePermissionState]);
 
   const retentionInfo = useMemo(
     () => pruneExpiredCyclesAndTransactions(data, activeCycleId),
@@ -1060,6 +1166,138 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setActiveCycleIdState('2026-10');
   };
 
+  // --- File System Access API Actions ---
+  const openFile = async (): Promise<boolean> => {
+    try {
+      const result = await openLocalJsonFile();
+      if (!result) return false;
+
+      const { prunedData } = pruneExpiredCyclesAndTransactions(result.data);
+      setData(prunedData);
+      setActiveFileHandle(result.handle);
+      setActiveFileName(result.fileName);
+      setFilePermissionState('granted');
+      setFileSaveStatus('saved');
+      setLastFileSaveTime(new Date());
+
+      await saveFileHandleToIDB(result.handle, result.fileName);
+      await saveAppDatatoIDB(prunedData);
+
+      if (prunedData.monthlyCycles.length > 0) {
+        const latestId =
+          prunedData.monthlyCycles[prunedData.monthlyCycles.length - 1].cycleId;
+        setActiveCycleIdState(latestId);
+      }
+      return true;
+    } catch (err) {
+      console.error('Error opening file:', err);
+      alert(err instanceof Error ? err.message : 'ファイルの読み込みに失敗しました。');
+      return false;
+    }
+  };
+
+  const saveFileAs = async (
+    suggestedName = 'keihi-pocket-data.json'
+  ): Promise<boolean> => {
+    try {
+      const result = await saveAsLocalJsonFile(data, suggestedName);
+      if (!result) return false;
+
+      setActiveFileHandle(result.handle);
+      setActiveFileName(result.fileName);
+      setFilePermissionState('granted');
+      setFileSaveStatus('saved');
+      setLastFileSaveTime(new Date());
+
+      await saveFileHandleToIDB(result.handle, result.fileName);
+      return true;
+    } catch (err) {
+      console.error('Error saving file:', err);
+      alert(err instanceof Error ? err.message : 'ファイルの保存に失敗しました。');
+      return false;
+    }
+  };
+
+  const saveToFile = async (): Promise<boolean> => {
+    if (!activeFileHandle) {
+      return await saveFileAs();
+    }
+    try {
+      setFileSaveStatus('saving');
+      const success = await writeDataToFileHandle(activeFileHandle, data);
+      if (success) {
+        setFileSaveStatus('saved');
+        setLastFileSaveTime(new Date());
+        return true;
+      } else {
+        setFileSaveStatus('error');
+        return false;
+      }
+    } catch (err) {
+      console.error('Error writing to file:', err);
+      setFileSaveStatus('error');
+      return false;
+    }
+  };
+
+  const reloadFromFile = async (): Promise<boolean> => {
+    if (!activeFileHandle) return false;
+    try {
+      const perm = await verifyPermission(activeFileHandle, false);
+      if (!perm) {
+        setFilePermissionState('denied');
+        return false;
+      }
+      setFilePermissionState('granted');
+      const result = await readDataFromFileHandle(activeFileHandle);
+      if (result) {
+        const { prunedData } = pruneExpiredCyclesAndTransactions(result.data);
+        setData(prunedData);
+        await saveAppDatatoIDB(prunedData);
+        setFileSaveStatus('saved');
+        setLastFileSaveTime(new Date());
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Error reloading file:', err);
+      return false;
+    }
+  };
+
+  const grantFilePermission = async (): Promise<boolean> => {
+    if (!activeFileHandle) return false;
+    try {
+      const granted = await requestPermission(activeFileHandle, true);
+      if (granted) {
+        setFilePermissionState('granted');
+        const result = await readDataFromFileHandle(activeFileHandle);
+        if (result) {
+          const { prunedData } = pruneExpiredCyclesAndTransactions(result.data);
+          setData(prunedData);
+          await saveAppDatatoIDB(prunedData);
+          setFileSaveStatus('saved');
+          setLastFileSaveTime(new Date());
+        }
+        return true;
+      } else {
+        setFilePermissionState('denied');
+        return false;
+      }
+    } catch (err) {
+      console.error('Error granting permission:', err);
+      return false;
+    }
+  };
+
+  const disconnectFile = async (): Promise<void> => {
+    await removeFileHandleFromIDB();
+    setActiveFileHandle(null);
+    setActiveFileName(null);
+    setFilePermissionState('none');
+    setFileSaveStatus('idle');
+  };
+
   return (
     <StoreContext.Provider
       value={{
@@ -1084,6 +1322,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         importJson,
         clearAllTransactions,
         restoreSampleData,
+        // File System & Persistence
+        isFSSupported,
+        activeFileName,
+        activeFileHandle,
+        filePermissionState,
+        fileSaveStatus,
+        lastFileSaveTime,
+        openFile,
+        saveFileAs,
+        saveToFile,
+        reloadFromFile,
+        disconnectFile,
+        grantFilePermission,
       }}
     >
       {children}

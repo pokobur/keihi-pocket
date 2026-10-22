@@ -15,6 +15,9 @@ import {
   PlusCircle,
   AlertCircle,
   FolderPlus,
+  FileText,
+  CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 import {
   calculateCountdowns,
@@ -24,6 +27,7 @@ import {
   getCycleIdFromDate,
 } from '@/lib/calculations';
 import { MonthlyCycle, NetPaymentBillingSummary } from '@/types';
+import { useStore } from '@/lib/store';
 
 interface CycleHeaderProps {
   cycle: MonthlyCycle;
@@ -62,6 +66,15 @@ export function CycleHeader({
   onOpenQuickExpenseModal,
   onOpenQuickIncomeModal,
 }: CycleHeaderProps) {
+  const {
+    isFSSupported,
+    activeFileName,
+    filePermissionState,
+    fileSaveStatus,
+    grantFilePermission,
+    saveToFile,
+  } = useStore();
+
   const { titleLabel, rangeLabel } = getCycleDateRange(cycle.cycleId, cycle);
   const countdowns = calculateCountdowns(new Date(), cycle.startDate);
   const todayCycleId = getCycleIdFromDate(countdowns.todayStr);
@@ -81,9 +94,67 @@ export function CycleHeader({
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-100 to-emerald-100 border border-teal-200/60 flex items-center justify-center shadow-2xs">
             <Wallet className="w-5 h-5 text-teal-600" />
           </div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-700">
-            経費ポケット
-          </h1>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-700">
+                経費ポケット
+              </h1>
+
+              {/* File System & IndexedDB Storage Sync Indicator */}
+              {isFSSupported && activeFileName ? (
+                filePermissionState === 'prompt' ? (
+                  <button
+                    type="button"
+                    onClick={() => grantFilePermission()}
+                    title="前回のPCファイルへのアクセス権限を再許可して最新データを同期します"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 transition animate-pulse"
+                  >
+                    <FileText className="w-3 h-3 text-amber-700" />
+                    <span>{activeFileName}（権限を再許可）</span>
+                  </button>
+                ) : filePermissionState === 'granted' ? (
+                  <button
+                    type="button"
+                    onClick={() => saveToFile()}
+                    title="PC上のファイルと自動同期中（クリックで即時上書き保存）"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/90 hover:bg-emerald-100/70 transition"
+                  >
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span className="font-semibold">{activeFileName}</span>
+                    <span className="text-[10px] text-emerald-700 font-normal">
+                      {fileSaveStatus === 'saving'
+                        ? '保存中...'
+                        : fileSaveStatus === 'error'
+                        ? '保存エラー'
+                        : '同期中'}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => grantFilePermission()}
+                    title="アクセス権限が拒否されています。クリックして再許可を試行"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100 transition"
+                  >
+                    <span>{activeFileName}（権限拒否）</span>
+                  </button>
+                )
+              ) : (
+                <button
+                  type="button"
+                  onClick={onOpenDataModal}
+                  title="現在はブラウザ内IndexedDBに自動保存されています。PCファイルへの直接保存を設定するにはクリック"
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-teal-50/70 text-teal-800 border border-teal-200/70 hover:bg-teal-100/70 transition"
+                >
+                  <Database className="w-3 h-3 text-teal-600" />
+                  <span>IndexedDB 自動保存中</span>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Action Buttons */}
@@ -144,10 +215,10 @@ export function CycleHeader({
             type="button"
             onClick={onOpenDataModal}
             className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium bg-stone-100/60 hover:bg-stone-200/60 text-slate-600 border border-stone-200/70 transition"
-            title="JSONデータの入出力・バックアップ"
+            title="PCファイル連携・JSONデータの入出力・バックアップ"
           >
             <Database className="w-3.5 h-3.5 text-slate-400" />
-            <span className="hidden lg:inline">データ管理</span>
+            <span className="hidden lg:inline">データ・PC保存設定</span>
           </button>
         </div>
       </div>
