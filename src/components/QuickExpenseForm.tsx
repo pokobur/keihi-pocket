@@ -25,6 +25,7 @@ interface QuickExpenseFormProps {
   categories: CategoryConfig[];
   currentCycle: MonthlyCycle;
   selectedCategoryId?: CategoryId;
+  onSelectCategoryId?: (id: CategoryId) => void;
   initialTxType?: 'expense' | 'income';
   onAddTransaction: (input: {
     date: string;
@@ -57,6 +58,7 @@ export function QuickExpenseForm({
   categories,
   currentCycle,
   selectedCategoryId,
+  onSelectCategoryId,
   initialTxType = 'expense',
   onAddTransaction,
   isModal = false,
@@ -87,19 +89,32 @@ export function QuickExpenseForm({
     setTxType(initialTxType);
   }, [initialTxType]);
 
+  // 親から渡された selectedCategoryId が変化した時のみ同期
   useEffect(() => {
     if (
       selectedCategoryId &&
       categories.some((c) => c.id === selectedCategoryId)
     ) {
       setCategoryId(selectedCategoryId);
-    } else if (
+    }
+  }, [selectedCategoryId, categories]);
+
+  // 選択中の科目がリストから削除された場合の安全策フォールバック
+  useEffect(() => {
+    if (
       categories.length > 0 &&
       !categories.some((c) => c.id === categoryId)
     ) {
-      setCategoryId(categories[0].id);
+      const fallback = categories[0].id;
+      setCategoryId(fallback);
+      onSelectCategoryId?.(fallback);
     }
-  }, [selectedCategoryId, categories, categoryId]);
+  }, [categories, categoryId, onSelectCategoryId]);
+
+  const handleSelectCategory = (newCatId: CategoryId) => {
+    setCategoryId(newCatId);
+    onSelectCategoryId?.(newCatId);
+  };
 
   useEffect(() => {
     if (todayStr >= currentCycle.startDate && todayStr <= currentCycle.endDate) {
@@ -256,7 +271,7 @@ export function QuickExpenseForm({
                 <button
                   key={cat.id}
                   type="button"
-                  onClick={() => setCategoryId(cat.id)}
+                  onClick={() => handleSelectCategory(cat.id)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition text-left ${
                     active
                       ? txType === 'income'

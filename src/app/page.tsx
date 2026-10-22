@@ -237,6 +237,7 @@ export default function KeihiPocketDashboard() {
               categories={data.settings.categories}
               currentCycle={currentCycle}
               selectedCategoryId={quickFormCategory}
+              onSelectCategoryId={setQuickFormCategory}
               onAddTransaction={handleAddTransaction}
             />
           </div>
@@ -276,6 +277,7 @@ export default function KeihiPocketDashboard() {
             categories={data.settings.categories}
             currentCycle={currentCycle}
             selectedCategoryId={quickFormCategory}
+            onSelectCategoryId={setQuickFormCategory}
             initialTxType={quickModalInitialType}
             onAddTransaction={handleAddTransaction}
             isModal
