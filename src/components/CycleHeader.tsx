@@ -105,7 +105,7 @@ export function CycleHeader({
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-teal-600/90 hover:bg-teal-600 text-white shadow-2xs transition"
           >
             <PlusCircle className="w-3.5 h-3.5" />
-            <span>一括予算配分</span>
+            <span>一括予算配分（入金＋繰越）</span>
           </button>
 
           <button
@@ -363,7 +363,7 @@ export function CycleHeader({
                     onClick={() => onOpenBudgetModal('base')}
                     className="text-[11px] font-bold text-teal-700 hover:underline flex items-center gap-0.5"
                   >
-                    ＋ 手動入金・配分 →
+                    ＋ 合算予算配分 →
                   </button>
                 </div>
                 <div className="mt-1.5 text-2xl font-extrabold text-slate-700">
