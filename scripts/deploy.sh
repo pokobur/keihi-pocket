@@ -27,4 +27,9 @@ rm -rf .git
 cd ..
 
 echo "🎉 デプロイ完了！"
-echo "GitHub Pages (https://pokobur.github.io/keihi-pocket/) にて数分で反映されます。"
+if [ -f public/CNAME ]; then
+  CNAME_DOMAIN=$(cat public/CNAME | tr -d '[:space:]')
+  echo "GitHub Pages (https://${CNAME_DOMAIN}/) にて数分で反映されます。"
+else
+  echo "GitHub Pages (https://pokobur.github.io/keihi-pocket/) にて数分で反映されます。"
+fi
